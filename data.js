@@ -27,6 +27,22 @@ const Data = (() => {
       if (!d.session) return null;
       me = d.user.id; return me;
     },
+    // この端末だけに保存していた記録と規程を、ログインした人の分として送る
+    async moveLocal() {
+      if (!online) return 0;
+      const list = Object.values(lget(LS.recs, {})).filter(r => r && r.id);
+      if (list.length) {
+        must(await sb.from("records").upsert(list.map(r => ({ id: r.id, user_id: me, data: r, updated_at: new Date().toISOString() }))));
+        try { localStorage.removeItem(LS.recs) } catch (e) {}
+      }
+      const rules = lget(LS.rules, null);
+      if (rules) {
+        const cur = must(await sb.from("settings").select("key").eq("key", "rules"));
+        if (!cur.length) { try { must(await sb.from("settings").insert({ key: "rules", data: rules })) } catch (e) { return list.length } }
+        try { localStorage.removeItem(LS.rules) } catch (e) {}
+      }
+      return list.length;
+    },
     async signOut() { if (chan) sb.removeChannel(chan); await sb.auth.signOut(); me = null },
 
     async loadAll() {

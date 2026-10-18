@@ -660,6 +660,7 @@ function remoteChanged(){clearTimeout(reloadT);reloadT=setTimeout(async()=>{awai
 async function start(){
   status("読み込み中…");
   const o=loadPref("works",null);if(o&&o.works&&o.works.length){works=o.works;sel=o.sel||sel;viewYm=sel.slice(0,7)}
+  if(mode==="db"){try{const n=await Data.moveLocal();if(n)status(`この端末の記録${n}件を引き継ぎました`)}catch(e){}}
   await reload();render();
   Data.watch(remoteChanged);
 }
