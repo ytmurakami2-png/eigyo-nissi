@@ -111,14 +111,14 @@ async function saveRules(r){
   render();
 }
 // 規程のファイルを読み取り、直す画面に入れる（保存は確かめてから）
-const RULE_ERR={nokey:"",badkey:"鍵が違うようです。入れ直してください。",net:"つながりませんでした。電波を確かめてください。",admin:"読み取りは管理者だけが使えます。",type:"PDF・写真・Word・文字のファイルを選んでください。",size:"ファイルが大きすぎます。",refusal:"読み取れませんでした。",long:"長すぎて読み取れませんでした。"};
+const RULE_ERR={nokey:"今は読み取れません。規程のファイルはClaudeに送ってください。",badkey:"鍵が違うようです。入れ直してください。",net:"つながりませんでした。電波を確かめてください。",admin:"読み取りは管理者だけが使えます。",type:"PDF・写真・Word・文字のファイルを選んでください。",size:"ファイルが大きすぎます。",refusal:"読み取れませんでした。",long:"長すぎて読み取れませんでした。"};
 async function readRuleFile(f){
   ruleFile=f;ruleBusy=true;ruleMsg="";needKey=false;render();
   try{const x=await Data.readRules(f),base=clone(R()),num=v=>Math.max(0,Math.round(Number(v)||0));
     ruleDraft={...base,...x,carRate:num(x.carRate),
       grades:(x.grades&&x.grades.length?x.grades:base.grades).map(g=>({name:String(g.name||"等級"),dailyStay:num(g.dailyStay),dailyDay:num(g.dailyDay),lodging:num(g.lodging),mode:g.mode==="flat"?"flat":"cap"}))};
     ruleMsg="読み取りました。確かめて保存してください。";ruleFile=null;
-  }catch(e){needKey=e.message==="nokey"||e.message==="badkey";ruleMsg=RULE_ERR[e.message]??"読み取れませんでした。もう一度お試しください。"}
+  }catch(e){needKey=e.message==="badkey";ruleMsg=RULE_ERR[e.message]??"読み取れませんでした。もう一度お試しください。"}
   ruleBusy=false;render();
 }
 async function saveMembers(){try{await Data.saveSetting("members",{map:members});status("保存しました")}catch(e){status("保存できませんでした","warn")}}
