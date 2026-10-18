@@ -3,7 +3,7 @@ const STYLES=["訪問","来社","電話","オンライン","出張"];
 const PURPOSES=["新規","フォロー","契約","相談","その他"];
 const EXP_CATS=["交通費","宿泊費","接待費","その他"];
 const MODES=["新幹線","飛行機","電車","バス","タクシー","車"];
-const NAMES={diary:"営業日誌",trip:"出張報告",exp:"出張旅費"};
+const NAMES={diary:"営業日誌",trip:"出張報告",exp:"出張旅費",report:"営業報告書"};
 const WD="日月火水木金土";
 // 会社の出張旅費規程（2025年11月1日施行）。rev を上げると、前に保存した規程よりこちらを使う
 const TEMPLATE={
@@ -272,7 +272,7 @@ function submitWork(){
 function defYm(){const d=new Date();if(d.getDate()<=5)d.setDate(0);return ds(d).slice(0,7)}
 let outP={from:"",to:"",...loadPref("period",{kind:"month"}),ym:defYm(),y:defYm().slice(0,4)};
 let outKind=loadPref("okind","report"), outFmt="pdf", outScope="me", outBusy=false;
-const KINDS={report:["営業報告書",["diary","trip","exp"]],exp:["旅費精算書",["exp"]],diary:["営業日誌の一覧",["diary"]]};
+const KINDS={report:["営業報告書",["report"]],exp:["旅費精算書",["exp"]],diary:["営業日誌の一覧",["diary"]]};
 function lastDay(y,m){return new Date(y,m,0).getDate()}
 function periodRange(){
   if(outP.kind==="year")return[`${outP.y}-01-01`,`${outP.y}-12-31`];
@@ -308,12 +308,12 @@ function outHTML(){
    ${pending?`<button type="button" class="wide" id="sharePending">${esc(pending.file.name)} を保存する</button>`:""}
    ${saved?`<p class="notebox ok">${esc(saved)}</p>`:""}
   </section>
-  ${KINDS[outKind][1].includes("diary")?previewDiary(tg,multi):""}${KINDS[outKind][1].includes("exp")?previewExp(tg,multi):""}
+  ${KINDS[outKind][1].some(t=>t==="diary"||t==="report")?previewDiary(tg,multi,outKind==="report"):""}${KINDS[outKind][1].includes("exp")?previewExp(tg,multi):""}
   ${dump?`<section class="card"><p class="hint">${esc(dump.msg)}</p><textarea class="dump" readonly>${esc(dump.text)}</textarea><button type="button" class="ghost" id="copyDump">中身をコピー</button></section>`:""}`;
 }
-function previewDiary(ids,multi){
-  const rows=ids.flatMap(u=>rangeRecs(u).map(r=>({u,r})));
-  return `<section class="card"><div class="ohead"><h2>活動の一覧</h2><b class="num">${rows.length}<small style="font-size:15px">件</small></b></div>${rows.length?`<div>${rows.map(({u,r})=>`<div class="row"><span class="dt num">${md(r.date)}${r.end&&r.end>r.date?"<br>〜"+md(r.end):""}</span><span class="t"><b>${esc(r.client||(r.dest?r.dest+"出張":"―"))}</b><small>${esc([multi?displayName(u):"",r.style,r.purpose].filter(Boolean).join("・"))}${r.note?"　"+esc(r.note.split("\n")[0]):""}</small></span><span></span></div>`).join("")}</div>`:`<p class="empty">この期間の記録はありません。</p>`}</section>`;
+function previewDiary(ids,multi,money){
+  const rows=ids.flatMap(u=>rangeRecs(u).map(r=>({u,r,t:money?recTotal(r,u):0}))),tot=rows.reduce((a,x)=>a+x.t,0);
+  return `<section class="card"><div class="ohead"><h2>${money?"報告書":"活動の一覧"}</h2><b class="num">${money?yen(tot):`${rows.length}<small style="font-size:15px">件</small>`}</b></div>${rows.length?`<div>${rows.map(({u,r,t})=>`<div class="row"><span class="dt num">${md(r.date)}${r.end&&r.end>r.date?"<br>〜"+md(r.end):""}</span><span class="t"><b>${esc(r.client||(r.dest?r.dest+"出張":"―"))}</b><small>${esc([multi?displayName(u):"",r.style,r.purpose].filter(Boolean).join("・"))}${r.note?"　"+esc(r.note.split("\n")[0]):""}</small></span><span class="y num">${t?yen(t):""}</span></div>`).join("")}</div>`:`<p class="empty">この期間の記録はありません。</p>`}</section>`;
 }
 function previewExp(ids,multi){
   let tot=0;const rows=ids.flatMap(u=>{const r=rowsFor("exp",u);tot+=r.m.pay;return r.rows.map(x=>({u,x}))}).sort((a,b)=>String(a.x[1]).localeCompare(String(b.x[1])));
@@ -322,6 +322,8 @@ function previewExp(ids,multi){
 function rowsFor(type,uid){
   const who=displayName(uid), rs=rangeRecs(uid);
   if(type==="diary")return{head:["氏名","日付","終了日","訪問先","形式","目的","内容"],rows:rs.map(r=>[who,r.date,r.end||"",r.client,r.style,r.purpose,r.note])};
+  if(type==="report"){const rows=rs.map(r=>[who,r.date,r.end||"",r.client,r.style,r.purpose,r.note,recTotal(r,uid)]);
+    return{head:["氏名","日付","終了日","訪問先","形式","目的","内容","旅費"],rows,total:rows.reduce((a,x)=>a+x[7],0)}}
   if(type==="trip")return{head:["氏名","出発日","帰着日","泊数","行き先","訪問先","内容"],rows:rs.filter(r=>r.style==="出張").map(r=>[who,r.date,r.end||r.date,recDays(r)-1,r.dest,r.client,r.note])};
   const m=expMonth(uid);
   const rows=[...m.lines.map(({r,x,claim,pay,warn})=>[who,r.date,x.cat,x.mode,x.from,x.to,x.round?"往復":"",x.cat==="宿泊費"?(x.nights||1):"",Number(x.amount)||0,claim,pay,[warn,x.km?x.km+"km":""].filter(Boolean).join(" "),r.dest]),
@@ -332,6 +334,7 @@ const q=v=>{v=String(v??"");return /[",\n\r]/.test(v)?'"'+v.replace(/"/g,'""')+'
 function csvText(type,ids){
   let head=null,rows=[],tail=[];
   ids.forEach(uid=>{const r=rowsFor(type,uid);head=r.head;rows.push(...r.rows);
+    if(type==="report")tail.push([displayName(uid)+" 旅費合計","","","","","","",r.total]);
     if(type==="exp"){tail.push([],[displayName(uid)+" 区分別"]);Object.entries(r.m.by).forEach(([k,v])=>tail.push(["",k,"","","","","","","","",v]));tail.push([displayName(uid)+" 合計","","","","","","","","",r.m.claim,r.m.pay])}});
   if(!head)head=rowsFor(type,me).head;
   return [head,...rows,...tail].map(r=>r.map(q).join(",")).join("\r\n");
@@ -342,6 +345,7 @@ function textOut(types,ids){
     types.forEach(t=>{const r=rowsFor(t,uid);
       if(t==="exp"){L.push(`【出張旅費】精算 ${yen(r.m.pay)}`);r.rows.forEach(x=>L.push(`　${md(x[1])} ${x[2]} ${yen(x[10])}`))}
       if(t==="diary"){L.push("【営業日誌】");r.rows.forEach(x=>L.push(`・${md(x[1])} ${x[3]||""} ${[x[4],x[5]].filter(Boolean).join("・")} ${(x[6]||"").replace(/\n/g," ")}`))}
+      if(t==="report"){L.push("【営業報告書】");r.rows.forEach(x=>L.push(`・${md(x[1])} ${x[3]||""} ${[x[4],x[5]].filter(Boolean).join("・")} ${(x[6]||"").replace(/\n/g," ")}${x[7]?" "+yen(x[7]):""}`));L.push(`旅費合計 ${yen(r.total)}`)}
       if(t==="trip"){L.push("【出張報告】");r.rows.forEach(x=>L.push(`・${md(x[1])}〜${md(x[2])} ${x[4]||""}（${x[3]}泊）`))}});L.push("")});
   return L.join("\n");
 }
@@ -360,18 +364,14 @@ function reportHTML(types,ids){
       <div style="display:flex;justify-content:space-between;align-items:flex-end;border-bottom:2px solid #1a3a5b;padding-bottom:8px">
         <div><div style="font-size:22px;font-weight:700;letter-spacing:.08em">${esc(KINDS[outKind][0])}</div><div style="font-size:12px;margin-top:4px">対象期間：${esc(periodLabel())}</div></div>
         <div style="text-align:right;font-size:11px;line-height:1.7">${co}<br>氏名：${esc(displayName(uid))}${bucket(uid).profile.dept?"（"+esc(bucket(uid).profile.dept)+"）":""}<br>作成日：${made}</div></div>`;
-    if(types.length>1){
-      h+=sec("概要")+`<table style="border-collapse:collapse;width:100%;table-layout:fixed"><colgroup><col style="width:110px"><col><col style="width:80px"><col></colgroup><tr><th ${th}>記録の件数</th><td ${td}>${rs.length}件</td><th ${th}>出張</th><td ${td}>${trips.length}回・${trips.reduce((a,r)=>a+recDays(r),0)}日</td></tr>
-        <tr><th ${th}>形式別</th><td ${td} colspan="3">${esc(cnt("style"))}</td></tr><tr><th ${th}>目的別</th><td ${td} colspan="3">${esc(cnt("purpose"))}</td></tr>
-        <tr><th ${th}>旅費の精算額</th><td ${td} colspan="3"><b>${yen(m.pay)}</b>　${Object.entries(m.by).map(([k,v])=>`${esc(k)} ${yen(v)}`).join("　")}</td></tr></table>`;
+    if(types.includes("report")){const tot=rs.reduce((a,r)=>a+recTotal(r,uid),0);
+      h+=`<table style="border-collapse:collapse;width:100%;margin-top:14px"><tr><th ${th} width="70">日付</th><th ${th} width="120">訪問先</th><th ${th} width="84">形式・目的</th><th ${th}>内容</th><th ${th} width="70">旅費</th></tr>
+        ${rs.map(r=>{const t=recTotal(r,uid);return `<tr><td ${td}>${md(r.date)}${r.end&&r.end>r.date?"〜"+md(r.end):""}</td><td ${td}>${esc(r.client||"―")}</td><td ${td}>${esc([r.style,r.purpose].filter(Boolean).join("・"))}</td><td ${td}>${esc(r.note).replace(/\n/g,"<br>")}</td><td ${tdn}>${t?yen(t):""}</td></tr>`}).join("")||`<tr><td ${td} colspan="5">記録はありません</td></tr>`}
+        <tr><th ${th} colspan="4" style="text-align:right">旅費合計</th><td ${tdn}><b>${yen(tot)}</b></td></tr></table>`;
     }
     if(types.includes("diary")){
       h+=sec("営業日誌")+`<table style="border-collapse:collapse;width:100%"><tr><th ${th} width="78">日付</th><th ${th} width="130">訪問先</th><th ${th} width="90">形式・目的</th><th ${th}>内容</th></tr>
         ${rs.map(r=>`<tr><td ${td}>${md(r.date)}${r.end&&r.end>r.date?"〜"+md(r.end):""}</td><td ${td}>${esc(r.client||"―")}</td><td ${td}>${esc([r.style,r.purpose].filter(Boolean).join("・"))}</td><td ${td}>${esc(r.note).replace(/\n/g,"<br>")}</td></tr>`).join("")||`<tr><td ${td} colspan="4">記録はありません</td></tr>`}</table>`;
-    }
-    if(types.includes("trip")&&types.length>1){
-      h+=sec("出張報告")+`<table style="border-collapse:collapse;width:100%"><tr><th ${th} width="110">期間</th><th ${th} width="80">行き先</th><th ${th} width="120">訪問先</th><th ${th}>内容</th><th ${th} width="80">旅費</th></tr>
-        ${trips.map(r=>`<tr><td ${td}>${md(r.date)}〜${md(r.end||r.date)}<br>${recDays(r)>1?`${recDays(r)-1}泊${recDays(r)}日`:"日帰り"}</td><td ${td}>${esc(r.dest||"―")}</td><td ${td}>${esc(r.client||"―")}</td><td ${td}>${esc(r.note).replace(/\n/g,"<br>")}</td><td ${tdn}>${yen(recTotal(r,uid))}</td></tr>`).join("")||`<tr><td ${td} colspan="5">出張はありません</td></tr>`}</table>`;
     }
     if(types.includes("exp")){
       const r=rowsFor("exp",uid);
@@ -393,7 +393,7 @@ async function pdfBlob(types,ids){
   const tmp=document.createElement("div");tmp.innerHTML=reportHTML(types,ids);
   const parts=[...tmp.children].map(el=>{const d=document.createElement("div");d.style.cssText="width:700px;background:#fff";d.appendChild(el);box.appendChild(d);return d});
   document.body.appendChild(box);
-  const opt=h=>({margin:[12,12,14,12],image:{type:"jpeg",quality:.95},html2canvas:{scale:Math.max(.8,Math.min(2,Math.sqrt(15e6/(703*(h*1.1+200))))),backgroundColor:"#ffffff"},jsPDF:{unit:"mm",format:"a4",orientation:"portrait"},pagebreak:{mode:["css","avoid-all"]}});
+  const opt=h=>({margin:[12,12,14,12],image:{type:"jpeg",quality:.95},html2canvas:{scrollX:0,scrollY:0,scale:Math.max(.8,Math.min(2,Math.sqrt(15e6/(703*(h*1.1+200))))),backgroundColor:"#ffffff"},jsPDF:{unit:"mm",format:"a4",orientation:"portrait"},pagebreak:{mode:["css","avoid-all"]}});
   try{let w=html2pdf().set(opt(parts[0].scrollHeight)).from(parts[0]).toPdf();
     parts.slice(1).forEach(d=>{w=w.get("pdf").then(pdf=>{pdf.addPage()}).set(opt(d.scrollHeight)).from(d).toContainer().toCanvas().toPdf()});
     return await w.outputPdf("blob")}
@@ -406,7 +406,7 @@ async function xlsxBlob(types,ids){
     if(t==="exp"){ids.forEach(uid=>{const r=rowsFor("exp",uid),g=gradeOf(uid);
       aoa.push([`出張旅費精算書　${periodLabel()}`],[R().company||"",`氏名：${displayName(uid)}`,`等級：${g?g.name:"―"}`],[],["精算額",r.m.pay,"申請額",r.m.claim]);
       Object.entries(r.m.by).forEach(([k,v])=>aoa.push([k,v]));aoa.push([],r.head.slice(1));r.rows.forEach(x=>aoa.push(x.slice(1)));aoa.push([],["申請者印","","承認印"],[],[])})}
-    else{const all=ids.map(uid=>rowsFor(t,uid));aoa=[all[0].head];all.forEach(r=>aoa.push(...r.rows))}
+    else{const all=ids.map(uid=>rowsFor(t,uid));aoa=[all[0].head];all.forEach((r,i)=>{aoa.push(...r.rows);if(t==="report")aoa.push([displayName(ids[i])+" 旅費合計","","","","","","",r.total])})}
     const ws=XLSX.utils.aoa_to_sheet(aoa);ws["!cols"]=Array.from({length:14},(_,i)=>({wch:i===0?12:(t!=="exp"&&i>=5)?40:13}));
     XLSX.utils.book_append_sheet(wb,ws,NAMES[t])});
   return new Blob([XLSX.write(wb,{bookType:"xlsx",type:"array"})],{type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"});
@@ -473,7 +473,7 @@ function ruleHTML(){
     <p class="hint">交通費：${esc(rr.transport||"")}${rr.carRate?`／自家用車 1kmあたり ${yen(rr.carRate)}`:""}</p>`;
   if(ruleMsg)h+=`<p class="hint">${esc(ruleMsg)}</p>`;
   if(needKey&&canEdit)h+=`<div class="f"><label for="aikey">読み取りの鍵</label><input type="password" id="aikey" autocomplete="off" placeholder="sk-ant-…"></div><div class="acts"><button type="button" class="go" id="aikeyGo">読み取る</button></div>`;
-  h+=`<div class="btnrow">${canEdit?`<label class="ghost file${ruleBusy?" busy":""}">${ruleBusy?"読み取り中…":"規程を読み込む"}<input type="file" id="ruleFile" accept=".pdf,.docx,.txt,image/*" ${ruleBusy?"disabled":""}></label><button type="button" class="ghost" id="ruleEdit">規程を直す</button>`:""}<button type="button" class="ghost" id="ruleDoc">Wordで書き出す</button></div>`;
+  h+=`<div class="btnrow">${canEdit?`<label class="ghost file${ruleBusy?" busy":""}">${ruleBusy?"読み取り中…":"規程を読み込む"}<input type="file" id="ruleFile" accept=".pdf,.docx,.txt,image/*" ${ruleBusy?"disabled":""}></label>`:""}</div>`;
   return h+`</section>`;
 }
 function membersHTML(){
@@ -482,49 +482,6 @@ function membersHTML(){
    <div class="tbl"><table>${ids.map(id=>`<tr><td>${esc(displayName(id))}${id===me?"（自分）":""}</td><td style="text-align:right"><select data-member="${esc(id)}" aria-label="等級">${R().grades.map(g=>`<option ${(members[id]||R().grades[R().grades.length-1].name)===g.name?"selected":""}>${esc(g.name)}</option>`).join("")}</select></td></tr>`).join("")}</table></div>
    <p class="hint">社員にはこのアプリのアドレスを送り、「はじめて使う」から登録してもらってください。</p></section>`;
 }
-function ruleDocHTML(r){
-  const art=[];let n=1;const A=(t,b)=>art.push(`<h3>第${n++}条（${t}）</h3><p>${b}</p>`);
-  A("目的",`この規程は、${esc(r.company)}の役員および従業員が業務のため出張する場合の旅費の支給について定める。`);
-  A("旅費の種類","旅費は、交通費、日当および宿泊料とする。");
-  A("交通費",esc(r.transport)+"を支給する。"+(r.carRate?`業務で自家用車を使用した場合は、走行距離1kmにつき${Number(r.carRate)}円を支給する。`:""));
-  A("日当","日当は出張の日数に応じ、別表の額を支給する。"+(r.dayTrip?"日帰り出張については、"+esc(r.dayTripNote)+"として別表の日帰り日当を支給する。":"日帰り出張には日当を支給しない。"));
-  A("宿泊料",r.grades.every(g=>!g.lodging)?"宿泊料は実費を支給する。":"宿泊料は宿泊の夜数に応じ、別表の額を"+(r.grades.every(g=>g.mode==="flat")?"定額で支給する。":"上限として実費を支給する（定額と定めた等級は定額を支給する）。"));
-  A("精算","出張者は出張終了後、所定の方法で旅費を申請し、承認を受けて精算する。");
-  if(r.notes)A("その他",esc(r.notes).replace(/\n/g,"<br>"));
-  A("施行",`この規程は${r.effective?esc(r.effective.replace(/^(\d+)-(\d+)-(\d+)$/,(m,y,mo,d)=>`${y}年${Number(mo)}月${Number(d)}日`)):"　　年　月　日"}から施行する。`);
-  return art.join("");
-}
-/* Word（.docx）で書き出す。中身を組み立てて固める */
-function ruleDocx(r){
-  const x=t=>String(t??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
-  const P=(t,o={})=>`<w:p><w:pPr>${o.c?'<w:jc w:val="center"/>':""}<w:spacing w:before="${o.b||0}" w:after="80"/></w:pPr><w:r><w:rPr><w:rFonts w:eastAsia="游明朝"/>${o.bold?"<w:b/>":""}<w:sz w:val="${o.sz||21}"/></w:rPr><w:t xml:space="preserve">${x(t)}</w:t></w:r></w:p>`;
-  const body=[P(r.title||"出張旅費規程",{c:1,bold:1,sz:32})];
-  ruleDocHTML(r).replace(/<h3>(.*?)<\/h3><p>(.*?)<\/p>/g,(m,h,t)=>{const un=v=>String(v||"").replace(/<br>/g,"\n").replace(/<[^>]+>/g,"").replace(/&amp;/g,"&").replace(/&lt;/g,"<").replace(/&gt;/g,">").replace(/&quot;/g,'"').replace(/&#39;/g,"'");
-    body.push(P(un(h),{bold:1,b:200}));un(t).split("\n").forEach(l=>body.push(P(l)))});
-  body.push(P("別表",{bold:1,b:200}));
-  const cell=t=>`<w:tc><w:p><w:r><w:rPr><w:sz w:val="20"/></w:rPr><w:t xml:space="preserve">${x(t)}</w:t></w:r></w:p></w:tc>`;
-  const rows=[["等級","日当（1日）",...(r.dayTrip?["日帰り日当"]:[]),"宿泊料（1泊）"],...r.grades.map(g=>[g.name,yen(g.dailyStay),...(r.dayTrip?[yen(g.dailyDay)]:[]),g.lodging?`${yen(g.lodging)}（${g.mode==="flat"?"定額":"上限"}）`:"実費"])];
-  const bd=["top","left","bottom","right","insideH","insideV"].map(k=>`<w:${k} w:val="single" w:sz="4" w:color="999999"/>`).join("");
-  body.push(`<w:tbl><w:tblPr><w:tblBorders>${bd}</w:tblBorders><w:tblW w:w="0" w:type="auto"/></w:tblPr>${rows.map(rw=>`<w:tr>${rw.map(cell).join("")}</w:tr>`).join("")}</w:tbl>`);
-  const doc=`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>${body.join("")}<w:sectPr><w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="1701" w:right="1418" w:bottom="1701" w:left="1418" w:header="851" w:footer="992" w:gutter="0"/></w:sectPr></w:body></w:document>`;
-  return zipBlob({"[Content_Types].xml":`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/></Types>`,
-    "_rels/.rels":`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>`,
-    "word/document.xml":doc},"application/vnd.openxmlformats-officedocument.wordprocessingml.document");
-}
-function zipBlob(files,type){
-  const T=new Uint32Array(256);for(let n=0;n<256;n++){let c=n;for(let k=0;k<8;k++)c=c&1?0xEDB88320^(c>>>1):c>>>1;T[n]=c>>>0}
-  const crc=b=>{let c=0xFFFFFFFF;for(const v of b)c=T[(c^v)&255]^(c>>>8);return(c^0xFFFFFFFF)>>>0};
-  const te=new TextEncoder(),out=[],cen=[];let off=0;
-  const u16=v=>[v&255,v>>8&255],u32=v=>[v&255,v>>8&255,v>>16&255,v>>>24&255];
-  for(const[name,text]of Object.entries(files)){const nm=te.encode(name),d=te.encode(text),c=crc(d);
-    const h=[...u32(0x04034b50),...u16(20),...u16(0x0800),...u16(0),...u16(0),...u16(0x21),...u32(c),...u32(d.length),...u32(d.length),...u16(nm.length),...u16(0)];
-    out.push(new Uint8Array(h),nm,d);
-    cen.push(new Uint8Array([...u32(0x02014b50),...u16(20),...u16(20),...u16(0x0800),...u16(0),...u16(0),...u16(0x21),...u32(c),...u32(d.length),...u32(d.length),...u16(nm.length),...u16(0),...u16(0),...u16(0),...u16(0),...u32(0),...u32(off)]),nm);
-    off+=h.length+nm.length+d.length}
-  const cs=cen.reduce((a,b)=>a+b.length,0),n=Object.keys(files).length;
-  return new Blob([...out,...cen,new Uint8Array([...u32(0x06054b50),...u16(0),...u16(0),...u16(n),...u16(n),...u32(cs),...u32(off),...u16(0)])],{type});
-}
-
 /* ================= ログイン ================= */
 function renderLogin(){
   $("nav").hidden=true;
@@ -617,13 +574,11 @@ document.addEventListener("click",ev=>{
   // 設定
   if(b.id==="logout"){Data.signOut().finally(()=>{me=null;store={};works=[];work=null;viewId=null;tab="rec";render()});return}
   if(b.id==="aikeyGo"){const k=($("aikey").value||"").trim();if(!k){$("aikey").focus();return}RulesAI.setKey(k);if(ruleFile)readRuleFile(ruleFile);return}
-  if(b.id==="ruleEdit"){ruleDraft=clone(R());ruleMsg="";render();return}
   if(b.id==="rcancel"){ruleDraft=null;ruleMsg="";render();return}
   if(b.id==="rsave"){saveRules(ruleDraft);return}
   if(b.id==="gadd"){ruleDraft.grades.push({name:"新しい等級",dailyStay:0,dailyDay:0,lodging:0,mode:"cap"});render();return}
   if(D.gdel){ruleDraft.grades.splice(Number(D.gdel),1);render();return}
   if(D.gmode){ruleDraft.grades[Number(D.gmode)].mode=D.v;render();return}
-  if(b.id==="ruleDoc"){const r=R();share(new File([ruleDocx(r)],`${r.title||"出張旅費規程"}.docx`,{type:"application/vnd.openxmlformats-officedocument.wordprocessingml.document"}),ruleDocHTML(r).replace(/<[^>]+>/g,"\n").replace(/\n+/g,"\n"));return}
   // 記録
   if(readOnly())return;
   const r=work; if(!r||isLocked(showingId(),r))return;
