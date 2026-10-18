@@ -31,9 +31,9 @@ const $=id=>document.getElementById(id);
 let me=null, email="", isAdmin=false, viewId=null, store={}, rules=null, members={};
 const mode=Data.online?"db":"local";
 let tab="rec", work=null, works=[], keepBlank=null; const addedIds=new Set();
-let sel=today(), viewYm=today().slice(0,7);
+let sel=today(), viewYm=today().slice(0,7), rangeFrom=null;
 let msg="", undo=null, retFor=null, retReason="", dump=null, saved="", pending=null;
-let ruleDraft=null, ruleMsg="", ruleBusy=false, stText="", stCls="";
+let ruleDraft=null, ruleMsg="", ruleBusy=false, ruleFile=null, needKey=false, stText="", stCls="";
 let loginMode="in", loginMsg="", loginBusy=false, loginMail="", loginName="";
 const timers={};
 
@@ -111,14 +111,14 @@ async function saveRules(r){
   render();
 }
 // 規程のファイルを読み取り、直す画面に入れる（保存は確かめてから）
-const RULE_ERR={local:"読み取りは、データ保存をつないでから使えます。",admin:"読み取りは管理者だけが使えます。",type:"PDF・写真・Word・文字のファイルを選んでください。",size:"ファイルが大きすぎます。",refusal:"読み取れませんでした。",long:"長すぎて読み取れませんでした。"};
+const RULE_ERR={nokey:"",badkey:"鍵が違うようです。入れ直してください。",net:"つながりませんでした。電波を確かめてください。",admin:"読み取りは管理者だけが使えます。",type:"PDF・写真・Word・文字のファイルを選んでください。",size:"ファイルが大きすぎます。",refusal:"読み取れませんでした。",long:"長すぎて読み取れませんでした。"};
 async function readRuleFile(f){
-  ruleBusy=true;ruleMsg="";render();
+  ruleFile=f;ruleBusy=true;ruleMsg="";needKey=false;render();
   try{const x=await Data.readRules(f),base=clone(R()),num=v=>Math.max(0,Math.round(Number(v)||0));
     ruleDraft={...base,...x,carRate:num(x.carRate),
       grades:(x.grades&&x.grades.length?x.grades:base.grades).map(g=>({name:String(g.name||"等級"),dailyStay:num(g.dailyStay),dailyDay:num(g.dailyDay),lodging:num(g.lodging),mode:g.mode==="flat"?"flat":"cap"}))};
-    ruleMsg="読み取りました。確かめて保存してください。";
-  }catch(e){ruleMsg=RULE_ERR[e.message]||"読み取れませんでした。電波を確かめて、もう一度お試しください。"}
+    ruleMsg="読み取りました。確かめて保存してください。";ruleFile=null;
+  }catch(e){needKey=e.message==="nokey"||e.message==="badkey";ruleMsg=RULE_ERR[e.message]??"読み取れませんでした。もう一度お試しください。"}
   ruleBusy=false;render();
 }
 async function saveMembers(){try{await Data.saveSetting("members",{map:members});status("保存しました")}catch(e){status("保存できませんでした","warn")}}
@@ -159,7 +159,7 @@ function monthHTML(ym){
   for(let i=0;i<lead;i++)c+=`<span></span>`;
   for(let i=1;i<=n;i++){const s=`${y}-${pad(m)}-${pad(i)}`,dw=new Date(s+"T00:00").getDay();
     const w=work,inr=w&&w.end&&s>w.date&&s<w.end,isEnd=w&&w.end&&s===w.end;
-    c+=`<button type="button" data-day="${s}" class="${s===sel||isEnd?"on":""} ${inr?"in":""} ${s===today()?"today":""} ${dw===0?"su":dw===6?"sa":""}">${i}</button>`}
+    c+=`<button type="button" data-day="${s}" class="${s===sel||isEnd?"on":""} ${s===rangeFrom?"from":""} ${inr?"in":""} ${s===today()?"today":""} ${dw===0?"su":dw===6?"sa":""}">${i}</button>`}
   return `<div class="pane" data-ym="${ym}"><div class="ym"><span class="y num">${y}</span><span class="m num">${m}</span><small>月</small></div><div class="cal">${c}</div></div>`;
 }
 function calHTML(){return `<div class="strip" id="strip">${calMonths().map(monthHTML).join("")}</div>`}
@@ -474,6 +474,7 @@ function ruleHTML(){
     <div class="tbl"><table><tr><th>等級</th><th>日当</th><th>日帰り</th><th>宿泊</th></tr>${rr.grades.map(g=>`<tr><td>${esc(g.name)}</td><td class="n">${yen(g.dailyStay)}</td><td class="n">${rr.dayTrip?yen(g.dailyDay):"―"}</td><td class="n">${yen(g.lodging)}<small style="font-family:var(--jp);font-size:11px">${g.mode==="flat"?" 定額":" 上限"}</small></td></tr>`).join("")}</table></div>
     <p class="hint">交通費：${esc(rr.transport||"")}${rr.carRate?`／自家用車 1kmあたり ${yen(rr.carRate)}`:""}</p>`;
   if(ruleMsg)h+=`<p class="hint">${esc(ruleMsg)}</p>`;
+  if(needKey&&canEdit)h+=`<div class="f"><label for="aikey">読み取りの鍵</label><input type="password" id="aikey" autocomplete="off" placeholder="sk-ant-…"></div><div class="acts"><button type="button" class="go" id="aikeyGo">読み取る</button></div>`;
   h+=`<div class="btnrow">${canEdit?`<label class="ghost file${ruleBusy?" busy":""}">${ruleBusy?"読み取り中…":"規程を読み込む"}<input type="file" id="ruleFile" accept=".pdf,.docx,.txt,image/*" ${ruleBusy?"disabled":""}></label><button type="button" class="ghost" id="ruleEdit">規程を直す</button>`:""}<button type="button" class="ghost" id="ruleDoc">Wordで書き出す</button></div>`;
   return h+`</section>`;
 }
@@ -560,8 +561,8 @@ async function doLogin(){
 }
 
 /* ================= 操作 ================= */
-/* ---------- カレンダーをなぞって複数日を選ぶ（指は長押ししてから、マウスはそのまま） ---------- */
-let drag=null, suppressClick=false, press=null;
+/* ---------- 複数日：選んでいる日をもう一度押し、終わりの日を押す（パソコンはなぞっても良い） ---------- */
+let drag=null, suppressClick=false;
 function dayAt(x,y){const el=document.elementFromPoint(x,y);const b=el&&el.closest&&el.closest(".cal button[data-day]");return b?b.dataset.day:null}
 function paintDrag(){const[a,z]=[drag.start,drag.end].sort();document.querySelectorAll(".cal button[data-day]").forEach(b=>{const s=b.dataset.day;b.classList.toggle("on",s===a||s===z);b.classList.toggle("in",s>a&&s<z)})}
 // どの記録の日付を変えるか：見ている書きかけ／その日の空の記録／無ければ新しく足す
@@ -572,25 +573,11 @@ function rangeTarget(a){
   const w=works.find(x=>!bucket(uid).recs[x.id]&&!isLocked(uid,x));if(w)return w;
   const n=newRec(a);works.push(n);keepBlank=n;addedIds.add(n.id);return n;
 }
-function endDrag(){
-  const d=drag;drag=null;press=null;if(!d)return;
-  suppressClick=true;setTimeout(()=>{suppressClick=false},400);
-  if(readOnly()){sel=d.start;renderDay();return}
-  const[a,z]=[d.start,d.end].sort(),r=rangeTarget(a);
+function setRange(x,y){
+  const[a,z]=[x,y].sort(),r=rangeTarget(a);rangeFrom=null;
   work=r;r.date=a;r.end=z>a?z:"";sel=a;viewYm=a.slice(0,7);msg="";touch();renderDay();
 }
-function beginDrag(s){drag={start:s,end:s};paintDrag();if(navigator.vibrate)navigator.vibrate(15)}
-document.addEventListener("touchstart",ev=>{
-  const b=ev.target.closest&&ev.target.closest(".cal button[data-day]");if(!b||ev.touches.length>1||readOnly())return;
-  const t=ev.touches[0];press={x:t.clientX,y:t.clientY,timer:setTimeout(()=>{if(press)beginDrag(b.dataset.day)},350)};
-},{passive:true});
-document.addEventListener("touchmove",ev=>{
-  if(drag){ev.preventDefault();const t=ev.touches[0],s=dayAt(t.clientX,t.clientY);if(s&&s!==drag.end){drag.end=s;paintDrag()}return}
-  if(press){const t=ev.touches[0];if(Math.abs(t.clientX-press.x)>8||Math.abs(t.clientY-press.y)>8){clearTimeout(press.timer);press=null}}
-},{passive:false});
-document.addEventListener("touchend",ev=>{if(press)clearTimeout(press.timer);if(drag){ev.preventDefault();endDrag()}press=null});
-document.addEventListener("touchcancel",()=>{if(press)clearTimeout(press.timer);press=null;if(drag){drag=null;renderBand()}});
-document.addEventListener("contextmenu",ev=>{if(ev.target.closest&&ev.target.closest(".cal"))ev.preventDefault()});
+function endDrag(){const d=drag;drag=null;if(!d)return;suppressClick=true;setTimeout(()=>{suppressClick=false},400);setRange(d.start,d.end)}
 document.addEventListener("mousedown",ev=>{const b=ev.target.closest&&ev.target.closest(".cal button[data-day]");if(!b||ev.button!==0||readOnly())return;drag={start:b.dataset.day,end:b.dataset.day,mouse:true,moved:false}});
 document.addEventListener("mousemove",ev=>{if(!drag||!drag.mouse)return;const s=dayAt(ev.clientX,ev.clientY);if(s&&s!==drag.end){drag.end=s;drag.moved=true;paintDrag()}});
 document.addEventListener("mouseup",()=>{if(!drag||!drag.mouse)return;if(!drag.moved){drag=null;return}endDrag()});
@@ -604,7 +591,11 @@ document.addEventListener("click",ev=>{
   const b=ev.target.closest("button"); if(!b||b.disabled)return; const D=b.dataset;
   if(b.id==="loginSwitch"){loginMode=loginMode==="in"?"up":"in";loginMsg="";renderLogin();return}
   const box=b.closest("[data-w]"); if(box&&works[+box.dataset.w]&&works[+box.dataset.w]!==work){work=works[+box.dataset.w];msg=""}
-  if(D.tab){tab=D.tab;dump=null;render();scrollTo(0,0);return}
+  if(D.tab){tab=D.tab;dump=null;rangeFrom=null;render();scrollTo(0,0);return}
+  if(D.day&&!readOnly()){
+    if(rangeFrom){setRange(rangeFrom,D.day);return}
+    if(D.day===sel&&!(work&&isLocked(showingId(),work)&&covers(work,sel))){rangeFrom=sel;renderBand();return}
+  }
   if(D.day){sel=D.day;msg="";
     works.forEach(w=>{if(!bucket(me).recs[w.id]&&!hasContent(w))w.date=sel});
     if(work&&!bucket(me).recs[work.id]&&work._dirty&&hasContent(work)){work.end="";work.date=sel;touch()}
@@ -627,6 +618,7 @@ document.addEventListener("click",ev=>{
   if(b.id==="copyDump"){navigator.clipboard.writeText(dump.text).then(()=>status("コピーしました"),()=>document.querySelector(".dump").select());return}
   // 設定
   if(b.id==="logout"){Data.signOut().finally(()=>{me=null;store={};works=[];work=null;viewId=null;tab="rec";render()});return}
+  if(b.id==="aikeyGo"){const k=($("aikey").value||"").trim();if(!k){$("aikey").focus();return}RulesAI.setKey(k);if(ruleFile)readRuleFile(ruleFile);return}
   if(b.id==="ruleEdit"){ruleDraft=clone(R());ruleMsg="";render();return}
   if(b.id==="rcancel"){ruleDraft=null;ruleMsg="";render();return}
   if(b.id==="rsave"){saveRules(ruleDraft);return}
@@ -674,7 +666,7 @@ document.addEventListener("input",ev=>{
 });
 document.addEventListener("change",ev=>{
   const el=ev.target;
-  if(el.id==="who"){viewId=el.value||null;works=[];work=null;render();return}
+  if(el.id==="who"){viewId=el.value||null;rangeFrom=null;works=[];work=null;render();return}
   if(el.dataset.pr){outP[el.dataset.pr]=el.value;savePref("period",outP);render();return}
   if(el.dataset.member){members[el.dataset.member]=el.value;saveMembers();render();return}
   if(el.id==="ruleFile"&&el.files[0]){readRuleFile(el.files[0]);return}

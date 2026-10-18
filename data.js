@@ -81,12 +81,11 @@ const Data = (() => {
       if (doc) must(await sb.from("approvals").upsert({ record_id: id, user_id: uid, data: doc }));
       else must(await sb.from("approvals").delete().eq("record_id", id));
     },
-    // 規程のファイルを読み取って、規程の形で返す（サーバーの read-rules が Claude に読ませる）
+    // 規程のファイルを読み取って、規程の形で返す（つないでいればサーバーの read-rules、いなければ端末の鍵で）
     async readRules(file) {
-      if (!online) throw new Error("local");
-      const data = await new Promise((ok, ng) => { const r = new FileReader();
-        r.onload = () => ok(String(r.result).split(",")[1] || ""); r.onerror = () => ng(r.error); r.readAsDataURL(file) });
-      const { data: d, error } = await sb.functions.invoke("read-rules", { body: { name: file.name, type: file.type, data } });
+      const part = await RulesAI.part(file);
+      if (!online) return RulesAI.direct(part);
+      const { data: d, error } = await sb.functions.invoke("read-rules", { body: { part } });
       if (error) { let code = "fail"; try { code = (await error.context.json()).error || code } catch (e) {} throw new Error(code) }
       return d.rules;
     },

@@ -1,7 +1,6 @@
-// 旅費規程のファイル（PDF・写真・Word・文字）を読んで、アプリの規程の形にして返す。
+// 旅費規程（アプリの rules-ai.js が PDF・写真・文字の形にした物）を読んで、アプリの規程の形にして返す。
 // 管理者だけが使える。鍵 ANTHROPIC_API_KEY は Supabase の「Secrets」に入れておく。
 import Anthropic from "npm:@anthropic-ai/sdk";
-import JSZip from "npm:jszip@3.10.1";
 import { createClient } from "npm:@supabase/supabase-js@2.45.4";
 
 const CORS = {
@@ -44,15 +43,6 @@ const PROMPT = `添付は会社の出張旅費規程です。営業日誌アプ�
 - 日当や宿泊料が地域（東京・大阪など）で変わる場合は、いちばん基本の金額を入れ、地域ごとの違いは notes に書く。
 - 文章は日本語で、短く。`;
 
-async function docxText(bytes: Uint8Array) {
-  const zip = await JSZip.loadAsync(bytes);
-  const xml = await zip.file("word/document.xml")?.async("string");
-  if (!xml) throw new Error("docx");
-  return xml.replace(/<\/w:p>/g, "\n").replace(/<w:tab\/>/g, "\t").replace(/<[^>]+>/g, "")
-    .replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&amp;/g, "&");
-}
-const b64ToBytes = (s: string) => Uint8Array.from(atob(s), c => c.charCodeAt(0));
-
 Deno.serve(async req => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
   try {
@@ -63,18 +53,9 @@ Deno.serve(async req => {
     const { data: admin, error } = await sb.rpc("is_admin");
     if (error || !admin) return json({ error: "admin" }, 403);
 
-    const { name = "", type = "", data = "" } = await req.json();
-    if (!data || data.length > 30_000_000) return json({ error: "size" }, 400);
-    let part: Anthropic.Beta.BetaContentBlockParam;
-    if (type === "application/pdf") {
-      part = { type: "document", source: { type: "base64", media_type: "application/pdf", data } };
-    } else if (/^image\/(jpeg|png|gif|webp)$/.test(type)) {
-      part = { type: "image", source: { type: "base64", media_type: type as "image/png", data } };
-    } else if (/\.docx$/i.test(name)) {
-      part = { type: "text", text: "【規程の本文】\n" + await docxText(b64ToBytes(data)) };
-    } else if (type.startsWith("text/") || /\.txt$/i.test(name)) {
-      part = { type: "text", text: "【規程の本文】\n" + new TextDecoder().decode(b64ToBytes(data)) };
-    } else return json({ error: "type" }, 400);
+    const { part } = await req.json();
+    if (!part || !["document", "image", "text"].includes(part.type)) return json({ error: "type" }, 400);
+    if (JSON.stringify(part).length > 40_000_000) return json({ error: "size" }, 400);
 
     const client = new Anthropic();
     const res = await client.beta.messages.create({

@@ -31,3 +31,5 @@ PDF・写真・Word・文字のファイルを Claude に読ませて、規程�
 
 1. Supabase の Edge Functions に `supabase/functions/read-rules` を置く（`supabase functions deploy read-rules`）
 2. Supabase の Secrets に `ANTHROPIC_API_KEY` を入れる
+
+データ保存につないでいない時は、設定で一度だけ Anthropic の鍵（sk-ant-…）を入れると、その端末から直接読み取ります（鍵はその端末にだけ残ります）。
