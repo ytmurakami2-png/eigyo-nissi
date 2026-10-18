@@ -23,31 +23,28 @@ fieldset{border:0;margin:0;padding:0;min-width:0;display:flex;flex-direction:col
 
 /* 藍の帯 */
 header{background:var(--ai);color:#fff;padding-top:calc(14px + env(safe-area-inset-top,0px));padding-bottom:18px}
-.brand{display:flex;align-items:baseline;justify-content:space-between;gap:12px;min-height:24px}
-.brand b{font-size:15px;letter-spacing:.2em;white-space:nowrap}
-.st{font-size:12px;color:var(--ai-dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.st.warn{color:#f2c08f}
+.st{margin:0 0 6px;font-size:12px;color:#f2c08f}
+.st:empty{display:none}
 .who{margin-top:10px;width:100%;background:transparent;color:#fff;border:1px solid var(--ai-line);border-radius:999px;padding:8px 14px;font-size:14px}
 .who option{color:var(--ink)}
-.month{display:flex;align-items:center;justify-content:space-between;margin-top:10px}
+.strip{display:flex;overflow-x:auto;scroll-snap-type:x mandatory;overscroll-behavior-x:contain;scrollbar-width:none;margin-top:6px;align-items:flex-start}
+.strip::-webkit-scrollbar{display:none}
+.pane{flex:0 0 100%;scroll-snap-align:start;scroll-snap-stop:always}
 .ym{display:flex;align-items:baseline;gap:6px}
 .ym .y{font-size:20px;color:var(--ai-dim)}
 .ym .m{font-size:44px;font-weight:600;line-height:1}
 .ym small{font-size:15px}
 .htitle{font-size:28px;font-weight:700;letter-spacing:.12em;margin-top:12px;line-height:1.2}
-.arws{display:flex;gap:8px}
-.arw{width:40px;height:40px;border:1px solid var(--ai-line);background:none;color:#fff;border-radius:50%;font-size:18px;display:grid;place-items:center}
 .cal{display:grid;grid-template-columns:repeat(7,1fr);margin-top:12px;border-top:1px solid #34557a}
 .cal em{font-style:normal;font-size:12px;text-align:center;color:var(--ai-dim);padding:6px 0 4px}
 .cal em.su{color:#f2a493}
-.cal button,.cal span{height:44px;border:0;background:none;color:#fff;font-family:var(--num);font-size:20px;font-weight:500;display:grid;place-items:center;border-radius:6px;padding:0}
+.cal button,.cal span{width:100%;height:44px;border:0;background:none;color:#fff;font-family:var(--num);font-size:20px;font-weight:500;display:grid;place-items:center;border-radius:6px;padding:0}
 .cal span{color:#4f6e92}
 .cal .su{color:#f2a493} .cal .sa{color:#a8c8ec}
 .cal button.today{box-shadow:inset 0 0 0 1px #6f8fb3}
 .cal button.in{background:rgba(255,255,255,.14);border-radius:0}
 .cal button.on{background:#fff;color:var(--ai);font-weight:600}
-.cal.edit{touch-action:none;user-select:none;-webkit-user-select:none}
-.cal.edit button:not(.on){box-shadow:inset 0 0 0 1px rgba(255,255,255,.12)}
+.cal{user-select:none;-webkit-user-select:none;-webkit-touch-callout:none}
 
 /* 記入 */
 main{display:flex;flex-direction:column;gap:14px;padding-block:16px}
@@ -112,6 +109,7 @@ main{display:flex;flex-direction:column;gap:14px;padding-block:16px}
 /* 出力 */
 .mnav{display:flex;justify-content:space-between;align-items:center}
 .mnav b{font-size:22px;font-weight:600}
+.arw{width:40px;height:40px;border:1px solid var(--ai-line);background:none;color:#fff;border-radius:50%;font-size:18px;display:grid;place-items:center}
 .mnav .arw{border-color:var(--line);color:var(--ai)}
 .ohead{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
 .ohead b{font-size:34px;font-weight:600}
@@ -147,3 +145,6 @@ nav button{border:0;background:none;padding:12px 0 12px;font-size:14px;color:var
 nav button[aria-current=true]{color:var(--ai);font-weight:700}
 nav button[aria-current=true]::before{content:"";position:absolute;top:0;left:30%;right:30%;height:3px;background:var(--ai);border-radius:0 0 3px 3px}
 @media (prefers-reduced-motion:no-preference){.seg button,.cal button{transition:background .15s,color .15s}}
+.ghost.file{position:relative;overflow:hidden;cursor:pointer}
+.ghost.file input{position:absolute;inset:0;opacity:0;cursor:pointer}
+.ghost.file.busy{opacity:.6}

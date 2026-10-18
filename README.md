@@ -24,3 +24,10 @@
 
 - 社員：自分の記録だけ読み書き。承認済みの記録は変えられない
 - 管理者：全員の記録を読み、承認・差し戻し、旅費規程と等級を決める
+
+## 規程の読み取り（設定 → 規程を読み込む）
+
+PDF・写真・Word・文字のファイルを Claude に読ませて、規程の画面に入れます（保存は確かめてから）。
+
+1. Supabase の Edge Functions に `supabase/functions/read-rules` を置く（`supabase functions deploy read-rules`）
+2. Supabase の Secrets に `ANTHROPIC_API_KEY` を入れる

@@ -81,6 +81,15 @@ const Data = (() => {
       if (doc) must(await sb.from("approvals").upsert({ record_id: id, user_id: uid, data: doc }));
       else must(await sb.from("approvals").delete().eq("record_id", id));
     },
+    // 規程のファイルを読み取って、規程の形で返す（サーバーの read-rules が Claude に読ませる）
+    async readRules(file) {
+      if (!online) throw new Error("local");
+      const data = await new Promise((ok, ng) => { const r = new FileReader();
+        r.onload = () => ok(String(r.result).split(",")[1] || ""); r.onerror = () => ng(r.error); r.readAsDataURL(file) });
+      const { data: d, error } = await sb.functions.invoke("read-rules", { body: { name: file.name, type: file.type, data } });
+      if (error) { let code = "fail"; try { code = (await error.context.json()).error || code } catch (e) {} throw new Error(code) }
+      return d.rules;
+    },
     // 他の端末で変わった時に知らせる
     watch(cb) {
       if (!online) return;

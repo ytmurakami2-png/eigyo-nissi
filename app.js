@@ -31,16 +31,15 @@ const $=id=>document.getElementById(id);
 let me=null, email="", isAdmin=false, viewId=null, store={}, rules=null, members={};
 const mode=Data.online?"db":"local";
 let tab="rec", work=null, works=[], keepBlank=null; const addedIds=new Set();
-let sel=today(), viewYm=today().slice(0,7), dateEdit=false, dePick=0;
+let sel=today(), viewYm=today().slice(0,7);
 let msg="", undo=null, retFor=null, retReason="", dump=null, saved="", pending=null;
-let ruleDraft=null, stText="", stCls="";
+let ruleDraft=null, ruleMsg="", ruleBusy=false, stText="", stCls="";
 let loginMode="in", loginMsg="", loginBusy=false, loginMail="", loginName="";
 const timers={};
 
 function loadPref(k,d){try{return JSON.parse(localStorage.getItem("eigyo-"+k))??d}catch(e){return d}}
 function savePref(k,v){try{localStorage.setItem("eigyo-"+k,JSON.stringify(v))}catch(e){}}
-function stamp(){const d=new Date();return pad(d.getHours())+":"+pad(d.getMinutes())}
-function status(t,c){stText=t;stCls=c||"";const s=$("status");if(s){s.textContent=t;s.className="st "+stCls}}
+function status(t,c){if(c!=="warn")t="";stText=t;stCls=c||"";const s=$("status");if(s){s.textContent=t;s.className="st "+stCls}}
 function bucket(id){return store[id]||(store[id]={recs:{},appr:{},profile:{}})}
 const R=()=>rules||TEMPLATE;
 const myId=()=>me;
@@ -93,7 +92,7 @@ function saveRec(r){
   r.updatedAt=Date.now(); b.recs[r.id]=r;
   clearTimeout(timers[r.id]); status("保存中…");
   timers[r.id]=setTimeout(async()=>{
-    try{await Data.saveRec(b.recs,clone(b.recs[r.id]||r));delete timers[r.id];status(mode==="db"?"保存済み "+stamp():"この端末に保存 "+stamp(),mode==="db"?"":"warn")}
+    try{await Data.saveRec(b.recs,clone(b.recs[r.id]||r));delete timers[r.id];status("")}
     catch(e){delete timers[r.id];status("保存できませんでした。電波を確かめてください","warn")}
   },450);
 }
@@ -103,12 +102,24 @@ async function removeRec(id){
 }
 function saveProfile(p){
   Object.assign(bucket(me).profile,p);
-  clearTimeout(timers.profile);timers.profile=setTimeout(async()=>{try{await Data.saveProfile(bucket(me).profile);status("保存済み "+stamp())}catch(e){status("保存できませんでした","warn")}},500);
+  clearTimeout(timers.profile);timers.profile=setTimeout(async()=>{try{await Data.saveProfile(bucket(me).profile);status("")}catch(e){status("保存できませんでした","warn")}},500);
 }
 async function saveRules(r){
+  r={...r};delete r.unclear;ruleMsg="";
   try{await Data.saveSetting("rules",{...r,updatedAt:Date.now()});rules=r;ruleDraft=null;status("規程を保存しました")}
   catch(e){status("規程を保存できません（管理者のみ）","warn")}
   render();
+}
+// 規程のファイルを読み取り、直す画面に入れる（保存は確かめてから）
+const RULE_ERR={local:"読み取りは、データ保存をつないでから使えます。",admin:"読み取りは管理者だけが使えます。",type:"PDF・写真・Word・文字のファイルを選んでください。",size:"ファイルが大きすぎます。",refusal:"読み取れませんでした。",long:"長すぎて読み取れませんでした。"};
+async function readRuleFile(f){
+  ruleBusy=true;ruleMsg="";render();
+  try{const x=await Data.readRules(f),base=clone(R()),num=v=>Math.max(0,Math.round(Number(v)||0));
+    ruleDraft={...base,...x,carRate:num(x.carRate),
+      grades:(x.grades&&x.grades.length?x.grades:base.grades).map(g=>({name:String(g.name||"等級"),dailyStay:num(g.dailyStay),dailyDay:num(g.dailyDay),lodging:num(g.lodging),mode:g.mode==="flat"?"flat":"cap"}))};
+    ruleMsg="読み取りました。確かめて保存してください。";
+  }catch(e){ruleMsg=RULE_ERR[e.message]||"読み取れませんでした。電波を確かめて、もう一度お試しください。"}
+  ruleBusy=false;render();
 }
 async function saveMembers(){try{await Data.saveSetting("members",{map:members});status("保存しました")}catch(e){status("保存できませんでした","warn")}}
 
@@ -134,25 +145,33 @@ async function setApproval(uid,id,on){
 /* ================= 帯（カレンダー） ================= */
 function covers(r,s){return r.date<=s&&(r.end&&r.end>r.date?r.end:r.date)>=s}
 function dayRecs(uid,s){return recsOf(uid).filter(r=>covers(r,s)).sort((a,b)=>(a.createdAt||0)-(b.createdAt||0))}
-function calHTML(){
-  const[y,m]=viewYm.split("-").map(Number),lead=new Date(y,m-1,1).getDay(),n=new Date(y,m,0).getDate(),prevN=new Date(y,m-1,0).getDate();
+function addYm(ym,k){const[y,m]=ym.split("-").map(Number),d=new Date(y,m-1+k,1);return d.getFullYear()+"-"+pad(d.getMonth()+1)}
+// 横に並べる月：1年前（それより古い記録があればその月）から半年先まで
+function calMonths(){
+  let a=addYm(today().slice(0,7),-12),z=addYm(today().slice(0,7),6);
+  recsOf(showingId()).forEach(r=>{const m=(r.date||"").slice(0,7);if(m&&m<a)a=m});
+  if(viewYm<a)a=viewYm;if(viewYm>z)z=viewYm;
+  const out=[];for(let m=a;m<=z;m=addYm(m,1))out.push(m);return out;
+}
+function monthHTML(ym){
+  const[y,m]=ym.split("-").map(Number),lead=new Date(y,m-1,1).getDay(),n=new Date(y,m,0).getDate();
   let c=[...WD].map((w,i)=>`<em class="${i===0?"su":""}">${w}</em>`).join("");
-  for(let i=lead-1;i>=0;i--)c+=`<span>${prevN-i}</span>`;
+  for(let i=0;i<lead;i++)c+=`<span></span>`;
   for(let i=1;i<=n;i++){const s=`${y}-${pad(m)}-${pad(i)}`,dw=new Date(s+"T00:00").getDay();
     const w=work,inr=w&&w.end&&s>w.date&&s<w.end,isEnd=w&&w.end&&s===w.end;
     c+=`<button type="button" data-day="${s}" class="${s===sel||isEnd?"on":""} ${inr?"in":""} ${s===today()?"today":""} ${dw===0?"su":dw===6?"sa":""}">${i}</button>`}
-  return `<div class="month"><div class="ym"><span class="y num">${y}</span><span class="m num">${m}</span><small>月</small></div>
-    <div class="arws"><button type="button" class="arw" data-vm="-1" aria-label="前の月">‹</button><button type="button" class="arw" data-vm="1" aria-label="次の月">›</button></div></div>
-    <div class="cal${dateEdit?" edit":""}">${c}</div>`;
+  return `<div class="pane" data-ym="${ym}"><div class="ym"><span class="y num">${y}</span><span class="m num">${m}</span><small>月</small></div><div class="cal">${c}</div></div>`;
 }
+function calHTML(){return `<div class="strip" id="strip">${calMonths().map(monthHTML).join("")}</div>`}
+function showMonth(){const st=$("strip");if(!st)return;const p=st.querySelector(`[data-ym="${viewYm}"]`);if(p)st.scrollLeft=p.offsetLeft-st.offsetLeft}
 function renderBand(title){
-  let h=`<div class="in"><div class="brand"><b>営業日誌</b><span class="st ${stCls}" id="status">${esc(stText)}</span></div>`;
+  let h=`<div class="in"><p class="st ${stCls}" id="status">${esc(stText)}</p>`;
   if(title)h+=`<div class="htitle">${esc(title)}</div>`;
   else{
     if(tab==="rec"&&isAdmin&&others().length)h+=`<select class="who" id="who" aria-label="表示する人"><option value="">自分の記録</option>${others().map(id=>`<option value="${esc(id)}" ${viewId===id?"selected":""}>${esc(displayName(id))} の記録</option>`).join("")}</select>`;
     h+=tab==="rec"?calHTML():`<div class="htitle">${tab==="out"?"出力":"設定"}</div>`;
   }
-  $("band").innerHTML=h+`</div>`;
+  $("band").innerHTML=h+`</div>`;showMonth();
 }
 
 /* ================= その日の記録 ================= */
@@ -168,9 +187,7 @@ function syncWorks(){
 function dayHTML(){
   const d=new Date(sel+"T00:00"),w=work,rng=w&&w.end&&w.end>w.date&&covers(w,sel);
   let h=`<div class="day"><span class="d num">${d.getMonth()+1}.${pad(d.getDate())}</span><span class="w">${WD[d.getDay()]}曜日${rng?`〜${md(w.end)}（${WD[new Date(w.end+"T00:00").getDay()]}）`:""}</span><span class="grow"></span>`;
-  if(!readOnly()&&w&&!isLocked(showingId(),w))h+=`<button type="button" class="rnd${dateEdit?" fill":""}" id="dateEdit">${dateEdit?"決定":"日付を変える"}</button>`;
   h+=`</div>`;
-  if(dateEdit)h+=`<p class="hint">上のカレンダーで日付を押してください（泊まりは終わりの日も）</p>`;
   if(readOnly()&&!works.length)return h+`<p class="empty">${esc(displayName(showingId()))} さんのこの日の記録はありません。</p>`;
   const shown=works.filter((x,i)=>i===0||addedIds.has(x.id)||!bucket(showingId()).recs[x.id]);
   if(!shown.includes(work))work=shown[0]||null;
@@ -190,7 +207,7 @@ function formHTML(r,idx){
   h+=`<div class="f"><label for="fc">訪問先</label><input type="text" id="fc" data-k="client" value="${esc(r.client)}" placeholder="会社名・お名前" autocomplete="off">${rc.length?`<div class="chips">${rc.map(c=>`<button type="button" data-fillc="${esc(c)}">${esc(c)}</button>`).join("")}</div>`:""}</div>`;
   h+=`<div class="f"><span class="lbl">形式</span>${seg(STYLES,"style",r.style)}</div>`;
   h+=`<div class="f"><span class="lbl">目的</span>${seg(PURPOSES,"purpose",r.purpose)}</div>`;
-  h+=`<div class="f"><label for="fn">内容</label><textarea id="fn" data-k="note">${esc(r.note)}</textarea>${r.note&&r.note===r._lastSugg&&!locked?`<p class="hint">よく使う書き方を下書きとして入れました。書き換えてください。</p>`:""}</div>`;
+  h+=`<div class="f"><label for="fn">内容</label><textarea id="fn" data-k="note">${esc(r.note)}</textarea></div>`;
   if(r.style==="出張")h+=tripHTML(r,locked);
   h+=`</fieldset>`;
   if(rt&&rt.reason)h+=`<p class="notebox">差し戻し：${esc(rt.reason)}</p>`;
@@ -203,10 +220,10 @@ function formHTML(r,idx){
 }
 function tripHTML(r,ro){
   const uid=showingId(),n=recDays(r),g=gradeOf(uid);
-  let h=`<div class="trip"><h3>出張旅費<span>${n>1?`${n-1}泊${n}日`:"日帰り"}${g?`・${esc(g.name)}の規程${rules?"":"（仮）"}`:""}</span></h3>`;
+  let h=`<div class="trip"><h3>出張旅費<span>${n>1?`${n-1}泊${n}日`:"日帰り"}</span></h3>`;
   const dests=recentDests().filter(t=>t!==r.dest);
   h+=`<div class="f"><label for="fd">行き先</label><input type="text" id="fd" data-k="dest" value="${esc(r.dest)}" placeholder="例：大阪" autocomplete="off">${!ro&&dests.length&&!r.dest?`<div class="chips">${dests.map(t=>`<button type="button" data-dest="${esc(t)}">${esc(t)}</button>`).join("")}</div>`:""}</div>`;
-  h+=autoFor(r,uid).map(a=>`<div class="line"><span>${esc(a.label)}<small>規程で自動</small></span><b class="num">${yen(a.pay)}</b></div>`).join("");
+  h+=autoFor(r,uid).map(a=>`<div class="line"><span>${esc(a.label)}</span><b class="num">${yen(a.pay)}</b></div>`).join("");
   (r.exps||[]).forEach((x,i)=>{const l=expLine(x,uid);
     h+=`<div class="xbox"><div class="xhead"><span>${esc(x.cat||"旅費")}</span>${ro?"":`<button type="button" class="x" data-xdel="${i}">削除</button>`}</div>
      <div class="f"><span class="lbl">区分</span>${seg(EXP_CATS,"xc"+i,x.cat)}</div>
@@ -428,16 +445,15 @@ function setHTML(){
   let h=`<section class="card"><h2>自分の情報</h2>
    <div class="f"><label for="p_name">氏名（帳票に載ります）</label><input type="text" id="p_name" data-prof="name" value="${esc(p.name||"")}" placeholder="例：村上 晃之"></div>
    <div class="f"><label for="p_dept">部署</label><input type="text" id="p_dept" data-prof="dept" value="${esc(p.dept||"")}"></div>
-   <p class="hint">旅費の等級：${g?esc(g.name):"―"}${rules?"":"（旅費規程が未設定のため、ひな形の金額で計算しています）"}</p></section>`;
+   <p class="hint">旅費の等級：${g?esc(g.name):"―"}</p></section>`;
   h+=ruleHTML(); if(isAdmin&&mode==="db")h+=membersHTML();
   if(mode==="db")h+=`<section class="card"><h2>アカウント</h2><p class="hint">${esc(email)}</p><button type="button" class="ghost" id="logout" style="align-self:flex-start">ログアウト</button></section>`;
-  else h+=`<p class="notebox">いまはこの端末だけに保存しています。</p>`;
   return h;
 }
 function ruleHTML(){
   const canEdit=isAdmin||mode!=="db";
   if(ruleDraft&&canEdit){const r=ruleDraft;
-    return `<section class="card"><h2>旅費規程を直す</h2>
+    return `<section class="card"><h2>旅費規程を直す</h2>${ruleMsg?`<p class="hint">${esc(ruleMsg)}</p>`:""}${r.unclear?`<p class="notebox">読み取れなかった所：${esc(r.unclear)}</p>`:""}
      <div class="row2"><div class="f"><label for="r_company">会社名</label><input type="text" id="r_company" data-rule="company" value="${esc(r.company)}"></div><div class="f"><label for="r_eff">施行日</label><input type="date" id="r_eff" data-rule="effective" value="${esc(r.effective)}"></div></div>
      <div class="f"><label for="r_tr">交通費の決まり</label><input type="text" id="r_tr" data-rule="transport" value="${esc(r.transport)}"></div>
      <div class="f"><label for="r_car">自家用車の単価（1kmあたり）</label><div class="yen"><input type="number" inputmode="numeric" id="r_car" data-rule="carRate" value="${esc(r.carRate||"")}"></div></div>
@@ -457,7 +473,8 @@ function ruleHTML(){
   h+=`<p class="hint">${esc(rr.company||"")}　${esc(rr.title||"出張旅費規程")}${rr.effective?"（"+esc(rr.effective)+" 施行）":""}${rules?"":"　ひな形の金額"}</p>
     <div class="tbl"><table><tr><th>等級</th><th>日当</th><th>日帰り</th><th>宿泊</th></tr>${rr.grades.map(g=>`<tr><td>${esc(g.name)}</td><td class="n">${yen(g.dailyStay)}</td><td class="n">${rr.dayTrip?yen(g.dailyDay):"―"}</td><td class="n">${yen(g.lodging)}<small style="font-family:var(--jp);font-size:11px">${g.mode==="flat"?" 定額":" 上限"}</small></td></tr>`).join("")}</table></div>
     <p class="hint">交通費：${esc(rr.transport||"")}${rr.carRate?`／自家用車 1kmあたり ${yen(rr.carRate)}`:""}</p>`;
-  h+=`<div class="btnrow">${canEdit?`<button type="button" class="ghost" id="ruleEdit">規程を直す</button>`:""}<button type="button" class="ghost" id="ruleDoc">Wordで書き出す</button></div>`;
+  if(ruleMsg)h+=`<p class="hint">${esc(ruleMsg)}</p>`;
+  h+=`<div class="btnrow">${canEdit?`<label class="ghost file${ruleBusy?" busy":""}">${ruleBusy?"読み取り中…":"規程を読み込む"}<input type="file" id="ruleFile" accept=".pdf,.docx,.txt,image/*" ${ruleBusy?"disabled":""}></label><button type="button" class="ghost" id="ruleEdit">規程を直す</button>`:""}<button type="button" class="ghost" id="ruleDoc">Wordで書き出す</button></div>`;
   return h+`</section>`;
 }
 function membersHTML(){
@@ -512,7 +529,7 @@ function zipBlob(files,type){
 /* ================= ログイン ================= */
 function renderLogin(){
   $("nav").hidden=true;
-  renderBand(loginMode==="in"?"ログイン":"はじめて使う");
+  renderBand(loginMode==="in"?"営業日誌":"はじめて使う");
   $("main").innerHTML=`<form class="card login" id="loginForm" novalidate>
     ${loginMode==="up"?`<div class="f"><label for="l_name">お名前</label><input type="text" id="l_name" autocomplete="name" placeholder="例：村上 晃之" value="${esc(loginName)}"></div>`:""}
     <div class="f"><label for="l_mail">メールアドレス</label><input type="email" id="l_mail" autocomplete="email" inputmode="email" value="${esc(loginMail)}"></div>
@@ -543,35 +560,55 @@ async function doLogin(){
 }
 
 /* ================= 操作 ================= */
-/* ---------- カレンダーをなぞって複数日を選ぶ ---------- */
-let drag=null, suppressClick=false;
+/* ---------- カレンダーをなぞって複数日を選ぶ（指は長押ししてから、マウスはそのまま） ---------- */
+let drag=null, suppressClick=false, press=null;
 function dayAt(x,y){const el=document.elementFromPoint(x,y);const b=el&&el.closest&&el.closest(".cal button[data-day]");return b?b.dataset.day:null}
 function paintDrag(){const[a,z]=[drag.start,drag.end].sort();document.querySelectorAll(".cal button[data-day]").forEach(b=>{const s=b.dataset.day;b.classList.toggle("on",s===a||s===z);b.classList.toggle("in",s>a&&s<z)})}
-document.addEventListener("pointerdown",ev=>{const b=ev.target.closest&&ev.target.closest(".cal button[data-day]");if(!b||readOnly()||!work||!dateEdit)return;drag={start:b.dataset.day,end:b.dataset.day,moved:false}});
-document.addEventListener("pointermove",ev=>{if(!drag)return;const s=dayAt(ev.clientX,ev.clientY);if(s&&s!==drag.end){drag.end=s;drag.moved=true;paintDrag()}});
-document.addEventListener("pointerup",()=>{if(!drag)return;const d=drag;drag=null;if(!d.moved)return;
-  suppressClick=true;setTimeout(()=>{suppressClick=false},350);
-  const[a,z]=[d.start,d.end].sort();const r=work;
-  r.date=a;r.end=z>a?z:"";sel=a;viewYm=a.slice(0,7);dateEdit=false;dePick=0;touch();renderDay()});
-document.addEventListener("pointercancel",()=>{if(drag){drag=null;renderBand()}});
+// どの記録の日付を変えるか：見ている書きかけ／その日の空の記録／無ければ新しく足す
+function rangeTarget(a){
+  const uid=showingId(),cur=work;
+  if(cur&&!isLocked(uid,cur)&&(!bucket(uid).recs[cur.id]||covers(cur,a)))return cur;
+  sel=a;syncWorks();
+  const w=works.find(x=>!bucket(uid).recs[x.id]&&!isLocked(uid,x));if(w)return w;
+  const n=newRec(a);works.push(n);keepBlank=n;addedIds.add(n.id);return n;
+}
+function endDrag(){
+  const d=drag;drag=null;press=null;if(!d)return;
+  suppressClick=true;setTimeout(()=>{suppressClick=false},400);
+  if(readOnly()){sel=d.start;renderDay();return}
+  const[a,z]=[d.start,d.end].sort(),r=rangeTarget(a);
+  work=r;r.date=a;r.end=z>a?z:"";sel=a;viewYm=a.slice(0,7);msg="";touch();renderDay();
+}
+function beginDrag(s){drag={start:s,end:s};paintDrag();if(navigator.vibrate)navigator.vibrate(15)}
+document.addEventListener("touchstart",ev=>{
+  const b=ev.target.closest&&ev.target.closest(".cal button[data-day]");if(!b||ev.touches.length>1||readOnly())return;
+  const t=ev.touches[0];press={x:t.clientX,y:t.clientY,timer:setTimeout(()=>{if(press)beginDrag(b.dataset.day)},350)};
+},{passive:true});
+document.addEventListener("touchmove",ev=>{
+  if(drag){ev.preventDefault();const t=ev.touches[0],s=dayAt(t.clientX,t.clientY);if(s&&s!==drag.end){drag.end=s;paintDrag()}return}
+  if(press){const t=ev.touches[0];if(Math.abs(t.clientX-press.x)>8||Math.abs(t.clientY-press.y)>8){clearTimeout(press.timer);press=null}}
+},{passive:false});
+document.addEventListener("touchend",ev=>{if(press)clearTimeout(press.timer);if(drag){ev.preventDefault();endDrag()}press=null});
+document.addEventListener("touchcancel",()=>{if(press)clearTimeout(press.timer);press=null;if(drag){drag=null;renderBand()}});
+document.addEventListener("contextmenu",ev=>{if(ev.target.closest&&ev.target.closest(".cal"))ev.preventDefault()});
+document.addEventListener("mousedown",ev=>{const b=ev.target.closest&&ev.target.closest(".cal button[data-day]");if(!b||ev.button!==0||readOnly())return;drag={start:b.dataset.day,end:b.dataset.day,mouse:true,moved:false}});
+document.addEventListener("mousemove",ev=>{if(!drag||!drag.mouse)return;const s=dayAt(ev.clientX,ev.clientY);if(s&&s!==drag.end){drag.end=s;drag.moved=true;paintDrag()}});
+document.addEventListener("mouseup",()=>{if(!drag||!drag.mouse)return;if(!drag.moved){drag=null;return}endDrag()});
+// 横に送った月を覚える
+addEventListener("resize",()=>showMonth());
+let stripT=null;
+document.addEventListener("scroll",ev=>{if(ev.target.id!=="strip")return;clearTimeout(stripT);stripT=setTimeout(()=>{const st=ev.target,ps=[...st.children];const i=Math.round(st.scrollLeft/st.clientWidth);if(ps[i])viewYm=ps[i].dataset.ym},120)},true);
 document.addEventListener("submit",ev=>{if(ev.target.id==="loginForm"){ev.preventDefault();if(!loginBusy)doLogin()}});
 document.addEventListener("click",ev=>{
   if(suppressClick&&ev.target.closest&&ev.target.closest(".cal")){suppressClick=false;return}
   const b=ev.target.closest("button"); if(!b||b.disabled)return; const D=b.dataset;
   if(b.id==="loginSwitch"){loginMode=loginMode==="in"?"up":"in";loginMsg="";renderLogin();return}
   const box=b.closest("[data-w]"); if(box&&works[+box.dataset.w]&&works[+box.dataset.w]!==work){work=works[+box.dataset.w];msg=""}
-  if(D.tab){tab=D.tab;dump=null;dateEdit=false;render();scrollTo(0,0);return}
-  if(b.id==="dateEdit"){dateEdit=!dateEdit;dePick=0;renderDay();if(dateEdit)scrollTo({top:0,behavior:"smooth"});return}
-  // 日付を変えている時：1回目で始めの日、2回目で終わりの日（同じ日なら1日だけ）
-  if(D.day&&dateEdit&&work){const s=D.day,r=work;
-    if(!dePick||s<r.date){r.date=s;r.end="";dePick=1}
-    else{r.end=s>r.date?s:"";dateEdit=false;dePick=0}
-    sel=r.date;touch();renderDay();return}
+  if(D.tab){tab=D.tab;dump=null;render();scrollTo(0,0);return}
   if(D.day){sel=D.day;msg="";
     works.forEach(w=>{if(!bucket(me).recs[w.id]&&!hasContent(w))w.date=sel});
     if(work&&!bucket(me).recs[work.id]&&work._dirty&&hasContent(work)){work.end="";work.date=sel;touch()}
     renderDay();return}
-  if(D.vm){const[y,m]=viewYm.split("-").map(Number);const d=new Date(y,m-1+Number(D.vm),1);viewYm=d.getFullYear()+"-"+pad(d.getMonth()+1);renderBand();return}
   if(D.appr){setApproval(showingId(),D.appr,true);return}
   if(D.unappr){setApproval(showingId(),D.unappr,false);return}
   if(D.ret){if(retFor!==D.ret){retFor=D.ret;renderForm();const t=$("retReason");if(t)t.focus();return}
@@ -590,8 +627,8 @@ document.addEventListener("click",ev=>{
   if(b.id==="copyDump"){navigator.clipboard.writeText(dump.text).then(()=>status("コピーしました"),()=>document.querySelector(".dump").select());return}
   // 設定
   if(b.id==="logout"){Data.signOut().finally(()=>{me=null;store={};works=[];work=null;viewId=null;tab="rec";render()});return}
-  if(b.id==="ruleEdit"){ruleDraft=clone(R());render();return}
-  if(b.id==="rcancel"){ruleDraft=null;render();return}
+  if(b.id==="ruleEdit"){ruleDraft=clone(R());ruleMsg="";render();return}
+  if(b.id==="rcancel"){ruleDraft=null;ruleMsg="";render();return}
   if(b.id==="rsave"){saveRules(ruleDraft);return}
   if(b.id==="gadd"){ruleDraft.grades.push({name:"新しい等級",dailyStay:0,dailyDay:0,lodging:0,mode:"cap"});render();return}
   if(D.gdel){ruleDraft.grades.splice(Number(D.gdel),1);render();return}
@@ -640,6 +677,7 @@ document.addEventListener("change",ev=>{
   if(el.id==="who"){viewId=el.value||null;works=[];work=null;render();return}
   if(el.dataset.pr){outP[el.dataset.pr]=el.value;savePref("period",outP);render();return}
   if(el.dataset.member){members[el.dataset.member]=el.value;saveMembers();render();return}
+  if(el.id==="ruleFile"&&el.files[0]){readRuleFile(el.files[0]);return}
 });
 
 /* ================= 起動 ================= */
@@ -652,7 +690,6 @@ async function reload(){
     // まだ送っていない自分の書きかけは残す
     if(store[me]){const loc=store[me].recs,fr=next[me].recs;for(const id in loc){if(timers[id]||(fr[id]&&(loc[id].updatedAt||0)>(fr[id].updatedAt||0)))fr[id]=loc[id]}}
     store=next;
-    if(!stText||stText==="読み込み中…")status(mode==="db"?"保存済み":"この端末に保存",mode==="db"?"":"warn");
   }catch(e){status("読み込めませんでした","warn")}
 }
 let reloadT=null;
