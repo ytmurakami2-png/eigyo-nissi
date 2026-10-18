@@ -5,15 +5,13 @@ const EXP_CATS=["交通費","宿泊費","接待費","その他"];
 const MODES=["新幹線","飛行機","電車","バス","タクシー","車"];
 const NAMES={diary:"営業日誌",trip:"出張報告",exp:"出張旅費"};
 const WD="日月火水木金土";
+// 会社の出張旅費規程（2025年11月1日施行）。rev を上げると、前に保存した規程よりこちらを使う
 const TEMPLATE={
-  company:"株式会社CSS", title:"出張旅費規程", effective:"",
-  dayTrip:true, dayTripNote:"片道50km以上の日帰り出張に支給",
-  transport:"実費（最も経済的な経路）。新幹線は普通車指定席まで", carRate:20,
-  grades:[
-   {name:"役員",dailyDay:3000,dailyStay:5000,lodging:15000,mode:"cap"},
-   {name:"管理職",dailyDay:2000,dailyStay:3000,lodging:12000,mode:"cap"},
-   {name:"一般",dailyDay:1500,dailyStay:2500,lodging:10000,mode:"cap"}],
-  notes:""};
+  rev:1, company:"株式会社CSS", title:"出張旅費規程", effective:"2025-11-01",
+  dayTrip:true, dayTripNote:"県内は片道30km以上、県外はすべて出張",
+  transport:"実費（領収書または乗車履歴を提出）", carRate:0,
+  grades:[{name:"全員",dailyDay:10000,dailyStay:10000,lodging:0,mode:"cap"}],
+  notes:"・出張：所属事業所から片道30km以上の県内、または県外への業務移動（会社が認めた場合も出張）\n・日当は国内1日10,000円、海外1日15,000円。領収書は不要\n・交通費・宿泊費などは実費精算\n・自家用車はガソリン代・高速代・駐車料を領収書で精算\n・自家用車は対人・対物の任意保険に入っていることが条件\n・接待費・会議費は会社が認めた場合に実費精算。領収書必須\n・申請は出張報告にもとづいて行う\n・業務委託の人は対象外"};
 
 /* ================= 道具 ================= */
 const pad=n=>String(n).padStart(2,"0");
@@ -105,7 +103,7 @@ function saveProfile(p){
   clearTimeout(timers.profile);timers.profile=setTimeout(async()=>{try{await Data.saveProfile(bucket(me).profile);status("")}catch(e){status("保存できませんでした","warn")}},500);
 }
 async function saveRules(r){
-  r={...r};delete r.unclear;ruleMsg="";
+  r={...r,rev:TEMPLATE.rev};delete r.unclear;ruleMsg="";
   try{await Data.saveSetting("rules",{...r,updatedAt:Date.now()});rules=r;ruleDraft=null;status("規程を保存しました")}
   catch(e){status("規程を保存できません（管理者のみ）","warn")}
   render();
@@ -380,7 +378,7 @@ function reportHTML(types,ids){
       h+=sec("旅費精算明細")+`<table style="border-collapse:collapse;width:100%"><tr><th ${th} width="52">日付</th><th ${th} width="58">区分</th><th ${th}>内容</th><th ${th} width="78">申請額</th><th ${th} width="78">精算額</th></tr>
         ${r.rows.map(x=>`<tr><td ${td}>${md(x[1])}</td><td ${td}>${esc(x[2])}</td><td ${td}>${esc([x[3],x[4]||x[5]?x[4]+"→"+x[5]:"",x[6],x[7]?x[7]+"泊":"",x[11],x[12]?"（"+x[12]+"）":""].filter(Boolean).join(" "))}</td><td ${tdn}>${yen(x[9])}</td><td ${tdn}>${yen(x[10])}</td></tr>`).join("")||`<tr><td ${td} colspan="5">旅費はありません</td></tr>`}
         <tr><th ${th} colspan="3" style="text-align:right">合計</th><td ${tdn}><b>${yen(r.m.claim)}</b></td><td ${tdn}><b>${yen(r.m.pay)}</b></td></tr></table>
-        <p style="font-size:10px;color:#5a6371;margin:6px 0 0">${R()===TEMPLATE?"※旅費規程が未設定のため、日当・宿泊上限はひな形の金額で計算しています。":"※日当・宿泊上限は出張旅費規程により計算しています。"}</p>`;
+        <p style="font-size:10px;color:#5a6371;margin:6px 0 0">※日当は出張旅費規程により計算しています。</p>`;
     }
     h+=`<table style="border-collapse:collapse;margin:22px 0 0 auto"><tr><th ${th} style="text-align:center;width:90px">申請者</th><th ${th} style="text-align:center;width:90px">承認</th></tr><tr><td style="border:1px solid #9aa3b2;height:64px"></td><td style="border:1px solid #9aa3b2"></td></tr></table></div>`;
     out+=h;
@@ -470,8 +468,8 @@ function ruleHTML(){
      <div class="acts"><button type="button" class="go" id="rsave">保存</button><button type="button" class="link" id="rcancel">やめる</button></div></section>`;}
   let h=`<section class="card"><h2>出張旅費規程</h2>`;
   const rr=rules||TEMPLATE;
-  h+=`<p class="hint">${esc(rr.company||"")}　${esc(rr.title||"出張旅費規程")}${rr.effective?"（"+esc(rr.effective)+" 施行）":""}${rules?"":"　ひな形の金額"}</p>
-    <div class="tbl"><table><tr><th>等級</th><th>日当</th><th>日帰り</th><th>宿泊</th></tr>${rr.grades.map(g=>`<tr><td>${esc(g.name)}</td><td class="n">${yen(g.dailyStay)}</td><td class="n">${rr.dayTrip?yen(g.dailyDay):"―"}</td><td class="n">${yen(g.lodging)}<small style="font-family:var(--jp);font-size:11px">${g.mode==="flat"?" 定額":" 上限"}</small></td></tr>`).join("")}</table></div>
+  h+=`<p class="hint">${esc(rr.company||"")}　${esc(rr.title||"出張旅費規程")}${rr.effective?"（"+esc(rr.effective)+" 施行）":""}</p>
+    <div class="tbl"><table><tr><th>等級</th><th>日当</th><th>日帰り</th><th>宿泊</th></tr>${rr.grades.map(g=>`<tr><td>${esc(g.name)}</td><td class="n">${yen(g.dailyStay)}</td><td class="n">${rr.dayTrip?yen(g.dailyDay):"―"}</td><td class="n">${g.lodging?`${yen(g.lodging)}<small style="font-family:var(--jp);font-size:11px">${g.mode==="flat"?" 定額":" 上限"}</small>`:`<small style="font-family:var(--jp)">実費</small>`}</td></tr>`).join("")}</table></div>
     <p class="hint">交通費：${esc(rr.transport||"")}${rr.carRate?`／自家用車 1kmあたり ${yen(rr.carRate)}`:""}</p>`;
   if(ruleMsg)h+=`<p class="hint">${esc(ruleMsg)}</p>`;
   if(needKey&&canEdit)h+=`<div class="f"><label for="aikey">読み取りの鍵</label><input type="password" id="aikey" autocomplete="off" placeholder="sk-ant-…"></div><div class="acts"><button type="button" class="go" id="aikeyGo">読み取る</button></div>`;
@@ -490,7 +488,7 @@ function ruleDocHTML(r){
   A("旅費の種類","旅費は、交通費、日当および宿泊料とする。");
   A("交通費",esc(r.transport)+"を支給する。"+(r.carRate?`業務で自家用車を使用した場合は、走行距離1kmにつき${Number(r.carRate)}円を支給する。`:""));
   A("日当","日当は出張の日数に応じ、別表の額を支給する。"+(r.dayTrip?"日帰り出張については、"+esc(r.dayTripNote)+"として別表の日帰り日当を支給する。":"日帰り出張には日当を支給しない。"));
-  A("宿泊料","宿泊料は宿泊の夜数に応じ、別表の額を"+(r.grades.every(g=>g.mode==="flat")?"定額で支給する。":"上限として実費を支給する（定額と定めた等級は定額を支給する）。"));
+  A("宿泊料",r.grades.every(g=>!g.lodging)?"宿泊料は実費を支給する。":"宿泊料は宿泊の夜数に応じ、別表の額を"+(r.grades.every(g=>g.mode==="flat")?"定額で支給する。":"上限として実費を支給する（定額と定めた等級は定額を支給する）。"));
   A("精算","出張者は出張終了後、所定の方法で旅費を申請し、承認を受けて精算する。");
   if(r.notes)A("その他",esc(r.notes).replace(/\n/g,"<br>"));
   A("施行",`この規程は${r.effective?esc(r.effective.replace(/^(\d+)-(\d+)-(\d+)$/,(m,y,mo,d)=>`${y}年${Number(mo)}月${Number(d)}日`)):"　　年　月　日"}から施行する。`);
@@ -505,7 +503,7 @@ function ruleDocx(r){
     body.push(P(un(h),{bold:1,b:200}));un(t).split("\n").forEach(l=>body.push(P(l)))});
   body.push(P("別表",{bold:1,b:200}));
   const cell=t=>`<w:tc><w:p><w:r><w:rPr><w:sz w:val="20"/></w:rPr><w:t xml:space="preserve">${x(t)}</w:t></w:r></w:p></w:tc>`;
-  const rows=[["等級","日当（1日）",...(r.dayTrip?["日帰り日当"]:[]),"宿泊料（1泊）"],...r.grades.map(g=>[g.name,yen(g.dailyStay),...(r.dayTrip?[yen(g.dailyDay)]:[]),`${yen(g.lodging)}（${g.mode==="flat"?"定額":"上限"}）`])];
+  const rows=[["等級","日当（1日）",...(r.dayTrip?["日帰り日当"]:[]),"宿泊料（1泊）"],...r.grades.map(g=>[g.name,yen(g.dailyStay),...(r.dayTrip?[yen(g.dailyDay)]:[]),g.lodging?`${yen(g.lodging)}（${g.mode==="flat"?"定額":"上限"}）`:"実費"])];
   const bd=["top","left","bottom","right","insideH","insideV"].map(k=>`<w:${k} w:val="single" w:sz="4" w:color="999999"/>`).join("");
   body.push(`<w:tbl><w:tblPr><w:tblBorders>${bd}</w:tblBorders><w:tblW w:w="0" w:type="auto"/></w:tblPr>${rows.map(rw=>`<w:tr>${rw.map(cell).join("")}</w:tr>`).join("")}</w:tbl>`);
   const doc=`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>${body.join("")}<w:sectPr><w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="1701" w:right="1418" w:bottom="1701" w:left="1418" w:header="851" w:footer="992" w:gutter="0"/></w:sectPr></w:body></w:document>`;
@@ -676,7 +674,7 @@ document.addEventListener("change",ev=>{
 async function reload(){
   try{
     const d=await Data.loadAll();
-    isAdmin=d.isAdmin;rules=d.rules;members=d.members||{};
+    isAdmin=d.isAdmin;rules=d.rules&&(d.rules.rev||0)>=TEMPLATE.rev?d.rules:null;members=d.members||{};
     const next={};
     new Set([...Object.keys(d.profiles),...Object.keys(d.recs),me]).forEach(uid=>{next[uid]={recs:d.recs[uid]||{},appr:d.appr[uid]||{},profile:d.profiles[uid]||{}}});
     // まだ送っていない自分の書きかけは残す
