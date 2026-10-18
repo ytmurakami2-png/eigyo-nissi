@@ -271,7 +271,7 @@ function submitWork(){
 // 月の初め（5日まで）は前の月、それ以外は今月を最初に出す
 function defYm(){const d=new Date();if(d.getDate()<=5)d.setDate(0);return ds(d).slice(0,7)}
 let outP={from:"",to:"",...loadPref("period",{kind:"month"}),ym:defYm(),y:defYm().slice(0,4)};
-let outKind=loadPref("okind","report"), outFmt="pdf", outScope="me", outBusy=false;
+let outKind="report", outFmt="pdf", outScope="me", outBusy=false;
 const KINDS={report:["営業報告書",["report"]],exp:["旅費精算書",["exp"]],diary:["営業日誌の一覧",["diary"]]};
 function lastDay(y,m){return new Date(y,m,0).getDate()}
 function periodRange(){
@@ -303,7 +303,6 @@ function outHTML(){
   return `<section class="card">
    <div class="f"><span class="lbl">期間</span><div class="seg">${[["month","月"],["year","年"],["range","期間を指定"]].map(([k,v])=>`<button type="button" data-pk="${k}" aria-pressed="${outP.kind===k}">${v}</button>`).join("")}</div>${ctrl}</div>
    ${isAdmin&&others().length?`<div class="f"><span class="lbl">対象</span><div class="seg"><button type="button" data-os="me" aria-pressed="${outScope==="me"}">自分</button><button type="button" data-os="all" aria-pressed="${outScope==="all"}">全員</button></div></div>`:""}
-   <div class="f"><span class="lbl">中身</span><div class="seg">${[["diary","活動の一覧"],["exp","金額の一覧"],["report","報告書"]].map(([k,v])=>`<button type="button" data-ok="${k}" aria-pressed="${outKind===k}">${v}</button>`).join("")}</div></div>
    <div class="f"><span class="lbl">保存</span><div class="seg">${[["pdf","PDF"],["xlsx","Excel"],["csv","CSV"]].map(([k,v])=>`<button type="button" data-save="${k}" ${outBusy?"disabled":""}>${outBusy===k?"作成中…":v}</button>`).join("")}</div></div>
    ${pending?`<button type="button" class="wide" id="sharePending">${esc(pending.file.name)} を保存する</button>`:""}
    ${saved?`<p class="notebox ok">${esc(saved)}</p>`:""}
@@ -380,7 +379,7 @@ function reportHTML(types,ids){
         <tr><th ${th} colspan="3" style="text-align:right">合計</th><td ${tdn}><b>${yen(r.m.claim)}</b></td><td ${tdn}><b>${yen(r.m.pay)}</b></td></tr></table>
         <p style="font-size:10px;color:#5a6371;margin:6px 0 0">※日当は出張旅費規程により計算しています。</p>`;
     }
-    h+=`<table style="border-collapse:collapse;margin:22px 0 0 auto"><tr><th ${th} style="text-align:center;width:90px">申請者</th><th ${th} style="text-align:center;width:90px">承認</th></tr><tr><td style="border:1px solid #9aa3b2;height:64px"></td><td style="border:1px solid #9aa3b2"></td></tr></table></div>`;
+    h+=`</div>`;
     out+=h;
   });
   return out;
@@ -566,7 +565,6 @@ document.addEventListener("click",ev=>{
   if(D.pk){outP.kind=D.pk;if(D.pk==="range"&&!outP.from){outP.from=outP.ym+"-01";outP.to=outP.ym+"-"+pad(lastDay(+outP.ym.slice(0,4),+outP.ym.slice(5)))}savePref("period",outP);render();return}
   if(D.pm){const[y,m]=outP.ym.split("-").map(Number);const d=new Date(y,m-1+Number(D.pm),1);outP.ym=d.getFullYear()+"-"+pad(d.getMonth()+1);render();return}
   if(D.py){outP.y=String(Number(outP.y)+Number(D.py));render();return}
-  if(D.ok){outKind=D.ok;saved="";savePref("okind",outKind);render();return}
   if(D.save){outFmt=D.save;doOutput();return}
   if(D.os){outScope=D.os;render();return}
   if(b.id==="sharePending"&&pending){const p=pending;share(p.file,p.fallback);return}
