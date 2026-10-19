@@ -37,7 +37,7 @@ const timers={};
 
 function loadPref(k,d){try{return JSON.parse(localStorage.getItem("eigyo-"+k))??d}catch(e){return d}}
 function savePref(k,v){try{localStorage.setItem("eigyo-"+k,JSON.stringify(v))}catch(e){}}
-function status(t,c){if(c!=="warn")t="";stText=t;stCls=c||"";const s=$("status");if(s){s.textContent=t;s.className="st "+stCls}}
+function status(t,c){if(c!=="warn"&&c!=="ok")t="";stText=t;stCls=c||"";const s=$("status");if(s){s.textContent=t;s.className="st "+stCls}}
 function bucket(id){return store[id]||(store[id]={recs:{},appr:{},profile:{}})}
 const R=()=>rules||TEMPLATE;
 const myId=()=>me;
@@ -649,11 +649,25 @@ async function reload(){
 }
 let reloadT=null;
 function remoteChanged(){clearTimeout(reloadT);reloadT=setTimeout(async()=>{await reload();renderList()},400)}
+// 受け取ったリンク（#import=…）の記録を入れる。同じ束は1回だけ
+async function importFromLink(){
+  const m=location.hash.match(/^#import=([A-Za-z0-9_-]+)$/);if(!m)return;
+  history.replaceState(null,"",location.pathname+location.search);
+  try{
+    const b64=m[1].replace(/-/g,"+").replace(/_/g,"/"),bin=Uint8Array.from(atob(b64+"===".slice((b64.length+3)%4)),c=>c.charCodeAt(0));
+    const d=JSON.parse(await new Response(new Blob([bin]).stream().pipeThrough(new DecompressionStream("deflate-raw"))).text());
+    const done=loadPref("imported",[]);if(done.includes(d.batch)){status("この記録はもう入っています","ok");return}
+    const b=bucket(me),add=d.recs.filter(r=>!b.recs[r.id]);
+    add.forEach(r=>{b.recs[r.id]=r});
+    if(mode==="db")for(const r of add)await Data.saveRec(b.recs,r);else if(add.length)await Data.saveRec(b.recs,add[0]);
+    savePref("imported",[...done,d.batch]);status(`記録を${add.length}件入れました`,"ok");
+  }catch(e){status("記録を入れられませんでした","warn")}
+}
 async function start(){
   status("読み込み中…");
   const o=loadPref("works",null);if(o&&o.works&&o.works.length){works=o.works;sel=o.sel||sel;viewYm=sel.slice(0,7)}
   if(mode==="db"){try{const n=await Data.moveLocal();if(n)status(`この端末の記録${n}件を引き継ぎました`)}catch(e){}}
-  await reload();render();
+  await reload();await importFromLink();render();
   Data.watch(remoteChanged);
 }
 (async function boot(){
