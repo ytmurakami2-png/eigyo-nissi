@@ -68,6 +68,15 @@ function autoFor(r,uid){
   if(g.mode==="flat"&&nt>0&&g.lodging)out.push({cat:"宿泊費",label:`宿泊料（定額）${yen(g.lodging)}×${nt}泊`,claim:g.lodging*nt,pay:g.lodging*nt});
   return out;
 }
+// 旅費の内訳（日当×日数と、足した旅費）。報告書に載せる
+function breakdown(r,uid){
+  return [...autoFor(r,uid).map(a=>({label:a.label,pay:a.pay})),
+    ...(r.exps||[]).filter(x=>Number(x.amount)).map(x=>{const n=Number(x.amount)||0;let lab=x.cat||"旅費";
+      if(x.cat==="交通費")lab+=" "+[x.mode,x.from||x.to?`${x.from||""}→${x.to||""}`:"",x.round?`${yen(n)}×往復`:""].filter(Boolean).join(" ");
+      if(x.cat==="宿泊費")lab+=` ${yen(n)}×${Math.max(1,Number(x.nights)||1)}泊`;
+      return{label:lab.trim(),pay:expLine(x,uid).pay}})];
+}
+const bdText=(r,uid)=>breakdown(r,uid).map(b=>`${b.label} ${yen(b.pay)}`).join("／");
 function recTotal(r,uid){return (r.exps||[]).reduce((a,x)=>a+expLine(x,uid).pay,0)+autoFor(r,uid).reduce((a,l)=>a+l.pay,0)}
 
 /* ================= 保存 ================= */
@@ -312,7 +321,7 @@ function outHTML(){
 }
 function previewDiary(ids,multi,money){
   const rows=ids.flatMap(u=>rangeRecs(u).map(r=>({u,r,t:money?recTotal(r,u):0}))),tot=rows.reduce((a,x)=>a+x.t,0);
-  return `<section class="card"><div class="ohead"><h2>${money?"報告書":"活動の一覧"}</h2><b class="num">${money?yen(tot):`${rows.length}<small style="font-size:15px">件</small>`}</b></div>${rows.length?`<div>${rows.map(({u,r,t})=>`<div class="row"><span class="dt num">${md(r.date)}${r.end&&r.end>r.date?"<br>〜"+md(r.end):""}</span><span class="t"><b>${esc(r.client||(r.dest?r.dest+"出張":"―"))}</b><small>${esc([multi?displayName(u):"",r.style,r.purpose].filter(Boolean).join("・"))}${r.note?"　"+esc(r.note.split("\n")[0]):""}</small></span><span class="y num">${t?yen(t):""}</span></div>`).join("")}</div>`:`<p class="empty">この期間の記録はありません。</p>`}</section>`;
+  return `<section class="card"><div class="ohead"><h2>${money?"報告書":"活動の一覧"}</h2><b class="num">${money?yen(tot):`${rows.length}<small style="font-size:15px">件</small>`}</b></div>${rows.length?`<div>${rows.map(({u,r,t})=>`<div class="row"><span class="dt num">${md(r.date)}${r.end&&r.end>r.date?"<br>〜"+md(r.end):""}</span><span class="t"><b>${esc(r.client||(r.dest?r.dest+"出張":"―"))}</b><small>${esc([multi?displayName(u):"",r.style,r.purpose].filter(Boolean).join("・"))}${r.note?"　"+esc(r.note.split("\n")[0]):""}</small>${money&&t?`<span class="bd">${breakdown(r,u).map(b=>`<i>${esc(b.label)}</i><i>${yen(b.pay)}</i>`).join("")}</span>`:""}</span><span class="y num">${t?yen(t):""}</span></div>`).join("")}</div>`:`<p class="empty">この期間の記録はありません。</p>`}</section>`;
 }
 function previewExp(ids,multi){
   let tot=0;const rows=ids.flatMap(u=>{const r=rowsFor("exp",u);tot+=r.m.pay;return r.rows.map(x=>({u,x}))}).sort((a,b)=>String(a.x[1]).localeCompare(String(b.x[1])));
@@ -322,7 +331,8 @@ function rowsFor(type,uid){
   const who=displayName(uid), rs=rangeRecs(uid);
   if(type==="diary")return{head:["氏名","日付","終了日","訪問先","形式","目的","内容"],rows:rs.map(r=>[who,r.date,r.end||"",r.client,r.style,r.purpose,r.note])};
   if(type==="report"){const rows=rs.map(r=>[who,r.date,r.end||"",r.client,r.style,r.purpose,r.note,recTotal(r,uid)]);
-    return{head:["氏名","日付","終了日","訪問先","形式","目的","内容","旅費"],rows,total:rows.reduce((a,x)=>a+x[7],0)}}
+    rows.forEach((x,i)=>x.push(bdText(rs[i],uid)));
+    return{head:["氏名","日付","終了日","訪問先","形式","目的","内容","旅費","内訳"],rows,total:rows.reduce((a,x)=>a+x[7],0)}}
   if(type==="trip")return{head:["氏名","出発日","帰着日","泊数","行き先","訪問先","内容"],rows:rs.filter(r=>r.style==="出張").map(r=>[who,r.date,r.end||r.date,recDays(r)-1,r.dest,r.client,r.note])};
   const m=expMonth(uid);
   const rows=[...m.lines.map(({r,x,claim,pay,warn})=>[who,r.date,x.cat,x.mode,x.from,x.to,x.round?"往復":"",x.cat==="宿泊費"?(x.nights||1):"",Number(x.amount)||0,claim,pay,[warn,x.km?x.km+"km":""].filter(Boolean).join(" "),r.dest]),
@@ -364,8 +374,10 @@ function reportHTML(types,ids){
         <div><div style="font-size:22px;font-weight:700;letter-spacing:.08em">${esc(KINDS[outKind][0])}</div><div style="font-size:12px;margin-top:4px">対象期間：${esc(periodLabel())}</div></div>
         <div style="text-align:right;font-size:11px;line-height:1.7">${co}<br>氏名：${esc(displayName(uid))}${bucket(uid).profile.dept?"（"+esc(bucket(uid).profile.dept)+"）":""}<br>作成日：${made}</div></div>`;
     if(types.includes("report")){const tot=rs.reduce((a,r)=>a+recTotal(r,uid),0);
-      h+=`<table style="border-collapse:collapse;width:100%;margin-top:14px"><tr><th ${th} width="70">日付</th><th ${th} width="120">訪問先</th><th ${th} width="84">形式・目的</th><th ${th}>内容</th><th ${th} width="70">旅費</th></tr>
-        ${rs.map(r=>{const t=recTotal(r,uid);return `<tr><td ${td}>${md(r.date)}${r.end&&r.end>r.date?"〜"+md(r.end):""}</td><td ${td}>${esc(r.client||"―")}</td><td ${td}>${esc([r.style,r.purpose].filter(Boolean).join("・"))}</td><td ${td}>${esc(r.note).replace(/\n/g,"<br>")}</td><td ${tdn}>${t?yen(t):""}</td></tr>`}).join("")||`<tr><td ${td} colspan="5">記録はありません</td></tr>`}
+      h+=`<table style="border-collapse:collapse;width:100%;margin-top:14px"><tr><th ${th} width="70">日付</th><th ${th} width="120">訪問先</th><th ${th} width="84">形式・目的</th><th ${th}>内容</th><th ${th} width="200">旅費</th></tr>
+        ${rs.map(r=>{const t=recTotal(r,uid),bd=breakdown(r,uid);
+          const cell=bd.map(b=>`<div style="display:flex;justify-content:space-between;gap:8px"><span>${esc(b.label)}</span><span style="white-space:nowrap">${yen(b.pay)}</span></div>`).join("")+(bd.length>1?`<div style="display:flex;justify-content:space-between;border-top:1px solid #c3c9d4;margin-top:3px;padding-top:3px;font-weight:700"><span>計</span><span>${yen(t)}</span></div>`:"");
+          return `<tr><td ${td}>${md(r.date)}${r.end&&r.end>r.date?"〜"+md(r.end):""}</td><td ${td}>${esc(r.client||"―")}</td><td ${td}>${esc([r.style,r.purpose].filter(Boolean).join("・"))}</td><td ${td}>${esc(r.note).replace(/\n/g,"<br>")}</td><td ${td}>${cell}</td></tr>`}).join("")||`<tr><td ${td} colspan="5">記録はありません</td></tr>`}
         <tr><th ${th} colspan="4" style="text-align:right">旅費合計</th><td ${tdn}><b>${yen(tot)}</b></td></tr></table>`;
     }
     if(types.includes("diary")){

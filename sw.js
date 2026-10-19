@@ -1,5 +1,5 @@
 /* 電波が弱い所でも開けるように、アプリの部品を端末に置いておく。データは毎回サーバーから */
-const CACHE = "eigyo-v8";
+const CACHE = "eigyo-v9";
 const SHELL = ["./", "index.html", "app.css", "app.js", "data.js", "rules-ai.js", "config.js", "manifest.webmanifest",
   "vendor/supabase.js", "vendor/html2pdf.bundle.min.js", "vendor/xlsx.full.min.js", "icons/icon-192.png"];
 self.addEventListener("install", e => { e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL))); self.skipWaiting() });
