@@ -455,6 +455,7 @@ function setHTML(){
    <div class="f"><label for="p_name">氏名（帳票に載ります）</label><input type="text" id="p_name" data-prof="name" value="${esc(p.name||"")}" placeholder="例：村上 晃之"></div>
    <div class="f"><label for="p_dept">部署</label><input type="text" id="p_dept" data-prof="dept" value="${esc(p.dept||"")}"></div>
    <p class="hint">旅費の等級：${g?esc(g.name):"―"}</p></section>`;
+  h+=`<section class="card"><h2>記録の取り込み</h2><button type="button" class="ghost" id="pasteImport" style="align-self:flex-start">貼り付けて取り込む</button></section>`;
   h+=ruleHTML(); if(isAdmin&&mode==="db")h+=membersHTML();
   if(mode==="db")h+=`<section class="card"><h2>アカウント</h2><p class="hint">${esc(email)}</p><button type="button" class="ghost" id="logout" style="align-self:flex-start">ログアウト</button></section>`;
   return h;
@@ -582,6 +583,7 @@ document.addEventListener("click",ev=>{
   if(b.id==="sharePending"&&pending){const p=pending;share(p.file,p.fallback);return}
   if(b.id==="copyDump"){navigator.clipboard.writeText(dump.text).then(()=>status("コピーしました"),()=>document.querySelector(".dump").select());return}
   // 設定
+  if(b.id==="pasteImport"){pasteImport();return}
   if(b.id==="logout"){Data.signOut().finally(()=>{me=null;store={};works=[];work=null;viewId=null;tab="rec";render()});return}
   if(b.id==="aikeyGo"){const k=($("aikey").value||"").trim();if(!k){$("aikey").focus();return}RulesAI.setKey(k);if(ruleFile)readRuleFile(ruleFile);return}
   if(b.id==="rcancel"){ruleDraft=null;ruleMsg="";render();return}
@@ -653,6 +655,18 @@ function remoteChanged(){clearTimeout(reloadT);reloadT=setTimeout(async()=>{awai
 async function importFromLink(){
   const m=location.hash.match(/^#import=([A-Za-z0-9_-]+)$/);if(!m)return;
   history.replaceState(null,"",location.pathname+location.search);
+  await importCode(m[1]);
+}
+// 設定の「貼り付けて取り込む」：コピーした取り込み用の文字（リンクごとでも可）を読む
+async function pasteImport(){
+  let t="";try{t=await navigator.clipboard.readText()}catch(e){}
+  if(!/import=|^[A-Za-z0-9_-]{40,}$/.test((t||"").trim()))t=prompt("取り込み用の文字を貼り付けてください")||"";
+  const m=t.trim().match(/(?:import=)?([A-Za-z0-9_-]{40,})\s*$/);
+  if(!m){status("取り込み用の文字が見つかりませんでした","warn");return}
+  await importCode(m[1]);tab="rec";render();scrollTo(0,0);
+}
+async function importCode(code){
+  const m=[null,code];
   try{
     const b64=m[1].replace(/-/g,"+").replace(/_/g,"/"),bin=Uint8Array.from(atob(b64+"===".slice((b64.length+3)%4)),c=>c.charCodeAt(0));
     const d=JSON.parse(await new Response(new Blob([bin]).stream().pipeThrough(new DecompressionStream("deflate-raw"))).text());
