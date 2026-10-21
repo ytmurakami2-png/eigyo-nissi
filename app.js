@@ -150,6 +150,36 @@ async function setApproval(uid,id,on){
   try{await Data.setApproval(uid,id,doc);status("更新しました")}catch(e){status("更新できませんでした","warn")}
 }
 
+/* ================= 祝日 ================= */
+const holCache={};
+function holidays(y){
+  if(holCache[y])return holCache[y];
+  const H={},k=(m,d)=>`${y}-${pad(m)}-${pad(d)}`,nth=(m,n)=>{const f=new Date(y,m-1,1).getDay();return 1+((8-f)%7)+(n-1)*7};
+  [[1,1,"元日"],[2,11,"建国記念の日"],[2,23,"天皇誕生日"],[4,29,"昭和の日"],[5,3,"憲法記念日"],[5,4,"みどりの日"],[5,5,"こどもの日"],[8,11,"山の日"],[11,3,"文化の日"],[11,23,"勤労感謝の日"]].forEach(([m,d,n])=>H[k(m,d)]=n);
+  H[k(1,nth(1,2))]="成人の日";H[k(7,nth(7,3))]="海の日";H[k(9,nth(9,3))]="敬老の日";H[k(10,nth(10,2))]="スポーツの日";
+  const q=Math.floor((y-1980)/4);H[k(3,Math.floor(20.8431+.242194*(y-1980)-q))]="春分の日";H[k(9,Math.floor(23.2488+.242194*(y-1980)-q))]="秋分の日";
+  const key=d=>`${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+  Object.keys(H).sort().forEach(s=>{const d=new Date(s+"T00:00");if(d.getDay()===0){do d.setDate(d.getDate()+1);while(H[key(d)]);H[key(d)]="振替休日"}});
+  for(let d=new Date(y,0,2);d.getFullYear()===y;d.setDate(d.getDate()+1)){const a=new Date(d),b=new Date(d);a.setDate(a.getDate()-1);b.setDate(b.getDate()+1);if(!H[key(d)]&&d.getDay()!==0&&H[key(a)]&&H[key(b)])H[key(d)]="国民の休日"}
+  return holCache[y]=H;
+}
+const holName=s=>holidays(Number(s.slice(0,4)))[s]||"";
+
+/* ================= 名前をぼかす ================= */
+let blurNames=loadPref("blur",false);
+// 訪問先に出てくる言葉と「〜様・氏・先生」「〜社・ホールディングス」などを、ぼかしの印で囲む
+function nameWords(){
+  const w=new Set();recsOf(showingId()).forEach(r=>String(r.client||"").split(/[\s　・、,]+/).forEach(t=>{t=t.replace(/(様|氏|先生|社長|さん)$/,"");if(t.length>=2)w.add(t)}));
+  return [...w].sort((a,b)=>b.length-a.length);
+}
+function maskNames(text){
+  const t=esc(text);if(!blurNames||!t)return t;
+  const ws=nameWords().map(x=>esc(x).replace(/[.*+?^${}()|[\]\\]/g,"\\$&"));
+  const re=new RegExp([...ws,"[一-龥ァ-ヶーA-Za-z]{1,12}(?:様|氏|先生|社長|さん)","[一-龥ァ-ヶーA-Za-z]{1,12}(?:株式会社|ホールディングス|工業|クリニック|病院|商事|コンサル|社)","株式会社[一-龥ァ-ヶーA-Za-z]{1,12}"].join("|"),"g");
+  return t.replace(re,m=>`<span class="nm">${m}</span>`);
+}
+const nm=text=>blurNames?`<span class="nm">${esc(text)}</span>`:esc(text);
+
 /* ================= 帯（カレンダー） ================= */
 function covers(r,s){return r.date<=s&&(r.end&&r.end>r.date?r.end:r.date)>=s}
 function dayRecs(uid,s){return recsOf(uid).filter(r=>covers(r,s)).sort((a,b)=>(a.createdAt||0)-(b.createdAt||0))}
@@ -165,9 +195,11 @@ function monthHTML(ym){
   const[y,m]=ym.split("-").map(Number),lead=new Date(y,m-1,1).getDay(),n=new Date(y,m,0).getDate();
   let c=[...WD].map((w,i)=>`<em class="${i===0?"su":""}">${w}</em>`).join("");
   for(let i=0;i<lead;i++)c+=`<span></span>`;
+  const done=new Set();recsOf(showingId()).forEach(r=>{if(!hasContent(r))return;for(let d=new Date(r.date+"T00:00"),z=r.end&&r.end>r.date?r.end:r.date;;d.setDate(d.getDate()+1)){const k=`${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;if(k>z)break;if(k.startsWith(ym))done.add(k)}});
   for(let i=1;i<=n;i++){const s=`${y}-${pad(m)}-${pad(i)}`,dw=new Date(s+"T00:00").getDay();
     const w=work,inr=w&&w.end&&s>w.date&&s<w.end,isEnd=w&&w.end&&s===w.end;
-    c+=`<button type="button" data-day="${s}" class="${s===sel||isEnd?"on":""} ${s===rangeFrom?"from":""} ${inr?"in":""} ${s===today()?"today":""} ${dw===0?"su":dw===6?"sa":""}">${i}</button>`}
+    const hn=holName(s),has=done.has(s);
+    c+=`<button type="button" data-day="${s}" class="${s===sel||isEnd?"on":""} ${s===rangeFrom?"from":""} ${inr?"in":""} ${s===today()?"today":""} ${dw===0||hn?"su":dw===6?"sa":""} ${has?"has":""}"${hn?` title="${hn}" aria-label="${i}日 ${hn}"`:""}>${i}</button>`}
   return `<div class="pane" data-ym="${ym}"><div class="ym"><span class="y num">${y}</span><span class="m num">${m}</span><small>月</small></div><div class="cal">${c}</div></div>`;
 }
 function calHTML(){return `<div class="strip" id="strip">${calMonths().map(monthHTML).join("")}</div>`}
@@ -212,10 +244,10 @@ function formHTML(r,idx){
   const ink=ap?'<div class="inkan">承認</div>':rt?'<div class="inkan ng">差戻し</div>':exists&&r.submittedAt&&!r._dirty?`<div class="inkan sent${r===justSent?" pop":""}">申請済</div>`:"";
   let h=`<section class="card" data-w="${idx}"><div class="chead"><h2>記録</h2>${ink}</div><fieldset ${locked?"disabled":""}>`;
   const rc=!r.client&&!locked?recentClients():[];
-  h+=`<div class="f"><label for="fc">訪問先</label><input type="text" id="fc" data-k="client" value="${esc(r.client)}" placeholder="会社名・お名前" autocomplete="off">${rc.length?`<div class="chips">${rc.map(c=>`<button type="button" data-fillc="${esc(c)}">${esc(c)}</button>`).join("")}</div>`:""}</div>`;
+  h+=`<div class="f"><label for="fc">訪問先</label><input type="text" id="fc" data-k="client" class="${blurNames?"nmf":""}" value="${esc(r.client)}" placeholder="会社名・お名前" autocomplete="off">${rc.length?`<div class="chips">${rc.map(c=>`<button type="button" data-fillc="${esc(c)}">${nm(c)}</button>`).join("")}</div>`:""}</div>`;
   h+=`<div class="f"><span class="lbl">形式</span>${seg(STYLES,"style",r.style)}</div>`;
   h+=`<div class="f"><span class="lbl">目的</span>${seg(PURPOSES,"purpose",r.purpose)}</div>`;
-  h+=`<div class="f"><label for="fn">内容</label><textarea id="fn" data-k="note">${esc(r.note)}</textarea></div>`;
+  h+=`<div class="f"><label for="fn">内容</label><textarea id="fn" data-k="note" class="${blurNames?"nmf":""}">${esc(r.note)}</textarea></div>`;
   if(r.style==="出張")h+=tripHTML(r,locked);
   h+=`</fieldset>`;
   if(rt&&rt.reason)h+=`<p class="notebox">差し戻し：${esc(rt.reason)}</p>`;
@@ -323,7 +355,7 @@ function outHTML(){
 }
 function previewDiary(ids,multi,money){
   const rows=ids.flatMap(u=>rangeRecs(u).map(r=>({u,r,t:money?recTotal(r,u):0}))),tot=rows.reduce((a,x)=>a+x.t,0);
-  return `<section class="card"><div class="ohead"><h2>${money?"報告書":"活動の一覧"}</h2><b class="num">${money?yen(tot):`${rows.length}<small style="font-size:15px">件</small>`}</b></div>${rows.length?`<div>${rows.map(({u,r,t})=>`<div class="row" data-open="${esc(u)}|${esc(r.id)}" role="button"><span class="dt num">${md(r.date)}${r.end&&r.end>r.date?"<br>〜"+md(r.end):""}</span><span class="t"><b>${esc(r.client||(r.dest?r.dest+"出張":"―"))}</b><small>${esc([multi?displayName(u):"",r.style,r.purpose].filter(Boolean).join("・"))}${r.note?"　"+esc(r.note.split("\n")[0]):""}</small>${money&&t?`<span class="bd">${breakdown(r,u).map(b=>`<i>${esc(b.label)}</i><i>${yen(b.pay)}</i>`).join("")}</span>`:""}</span><span class="y num">${t?yen(t):""}</span></div>`).join("")}</div>`:`<p class="empty">この期間の記録はありません。</p>`}</section>`;
+  return `<section class="card"><div class="ohead"><h2>${money?"報告書":"活動の一覧"}</h2><b class="num">${money?yen(tot):`${rows.length}<small style="font-size:15px">件</small>`}</b></div>${rows.length?`<div>${rows.map(({u,r,t})=>`<div class="row" data-open="${esc(u)}|${esc(r.id)}" role="button"><span class="dt num">${md(r.date)}${r.end&&r.end>r.date?"<br>〜"+md(r.end):""}</span><span class="t"><b>${r.client?nm(r.client):esc(r.dest?r.dest+"出張":"―")}</b><small>${esc([multi?displayName(u):"",r.style,r.purpose].filter(Boolean).join("・"))}${r.note?"　"+maskNames(r.note.split("\n")[0]):""}</small>${money&&t?`<span class="bd">${breakdown(r,u).map(b=>`<i>${esc(b.label)}</i><i>${yen(b.pay)}</i>`).join("")}</span>`:""}</span><span class="y num">${t?yen(t):""}</span></div>`).join("")}</div>`:`<p class="empty">この期間の記録はありません。</p>`}</section>`;
 }
 function previewExp(ids,multi){
   let tot=0;const rows=ids.flatMap(u=>{const r=rowsFor("exp",u);tot+=r.m.pay;return r.rows.map(x=>({u,x}))}).sort((a,b)=>String(a.x[1]).localeCompare(String(b.x[1])));
@@ -457,6 +489,7 @@ function setHTML(){
    <div class="f"><label for="p_name">氏名（帳票に載ります）</label><input type="text" id="p_name" data-prof="name" value="${esc(p.name||"")}" placeholder="例：村上 晃之"></div>
    <div class="f"><label for="p_dept">部署</label><input type="text" id="p_dept" data-prof="dept" value="${esc(p.dept||"")}"></div>
    <p class="hint">旅費の等級：${g?esc(g.name):"―"}</p></section>`;
+  h+=`<section class="card"><h2>表示</h2><label class="sw"><input type="checkbox" id="blurNames" ${blurNames?"checked":""}><span>会社名・個人名をぼかす</span></label></section>`;
   h+=`<section class="card"><h2>記録の取り込み</h2><button type="button" class="ghost" id="pasteImport" style="align-self:flex-start">貼り付けて取り込む</button></section>`;
   h+=ruleHTML(); if(isAdmin&&mode==="db")h+=membersHTML();
   if(mode==="db")h+=`<section class="card"><h2>アカウント</h2><p class="hint">${esc(email)}</p><button type="button" class="ghost" id="logout" style="align-self:flex-start">ログアウト</button></section>`;
@@ -641,6 +674,7 @@ document.addEventListener("input",ev=>{
 });
 document.addEventListener("change",ev=>{
   const el=ev.target;
+  if(el.id==="blurNames"){blurNames=el.checked;savePref("blur",blurNames);return}
   if(el.id==="who"){viewId=el.value||null;rangeFrom=null;works=[];work=null;render();return}
   if(el.dataset.pr){outP[el.dataset.pr]=el.value;savePref("period",outP);render();return}
   if(el.dataset.member){members[el.dataset.member]=el.value;saveMembers();render();return}
