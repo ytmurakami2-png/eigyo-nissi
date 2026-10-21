@@ -90,7 +90,8 @@ function suggestNote(r){
   if(top&&top[1]>=2)return top[0];
   return (NOTE_TPL[r.purpose]||(()=>""))(r.client);
 }
-function touch(){if(work)work._dirty=true;savePref("works",{sel,works:works.filter(w=>w._dirty)})}
+let justSent=null;
+function touch(){if(work){work._dirty=true;delete work.submittedAt}savePref("works",{sel,works:works.filter(w=>w._dirty)})}
 function saveRec(r){
   if(readOnly())return;
   const b=bucket(me);
@@ -208,7 +209,7 @@ function formHTML(r,idx){
   const uid=showingId(),ap=apprOf(uid,r.id),locked=readOnly()||!!ap;
   const exists=!!bucket(uid).recs[r.id];
   const rt=!ap&&exists?retOf(uid,r):null;
-  const ink=ap?'<div class="inkan">承認</div>':rt?'<div class="inkan ng">差戻し</div>':exists?'<div class="inkan wait">申請中</div>':"";
+  const ink=ap?'<div class="inkan">承認</div>':rt?'<div class="inkan ng">差戻し</div>':exists&&r.submittedAt&&!r._dirty?`<div class="inkan sent${r===justSent?" pop":""}">申請済</div>`:"";
   let h=`<section class="card" data-w="${idx}"><div class="chead"><h2>記録</h2>${ink}</div><fieldset ${locked?"disabled":""}>`;
   const rc=!r.client&&!locked?recentClients():[];
   h+=`<div class="f"><label for="fc">訪問先</label><input type="text" id="fc" data-k="client" value="${esc(r.client)}" placeholder="会社名・お名前" autocomplete="off">${rc.length?`<div class="chips">${rc.map(c=>`<button type="button" data-fillc="${esc(c)}">${esc(c)}</button>`).join("")}</div>`:""}</div>`;
@@ -219,7 +220,7 @@ function formHTML(r,idx){
   h+=`</fieldset>`;
   if(rt&&rt.reason)h+=`<p class="notebox">差し戻し：${esc(rt.reason)}</p>`;
   const adm=isAdmin&&mode==="db"&&exists?(ap?`<button type="button" class="link" data-unappr="${r.id}">承認を取り消す</button>`:rt?"":`<button type="button" class="ok" data-appr="${r.id}">承認</button><button type="button" class="back" data-ret="${r.id}">差し戻し</button>`):"";
-  if(!locked)h+=`<div class="acts"><button type="button" class="go" id="submit">申請</button>${exists||works.length>1?`<button type="button" class="link del" id="delRec">削除</button>`:""}</div>`;
+  if(!locked)h+=`<div class="acts">${r.submittedAt&&!r._dirty?`<button type="button" class="go done" id="submit">✓ 申請済</button>`:`<button type="button" class="go" id="submit">申請</button>`}${exists||works.length>1?`<button type="button" class="link del" id="delRec">削除</button>`:""}</div>`;
   if(adm)h+=`<div class="acts">${adm}</div>`;
   if(adm&&retFor===r.id)h+=`<div class="f"><input type="text" id="retReason" placeholder="差し戻しの理由" autocomplete="off"></div>`;
   if(r===work&&msg)h+=`<p class="hint">${esc(msg)}</p>`;
@@ -273,7 +274,8 @@ function submitWork(){
   const r=work; if(!hasContent(r)){msg="訪問先か内容を入れてから申請してください。";renderForm();return}
   if(apprOf(me,r.id)){msg="承認済みのため変更できません。";renderForm();return}
   const x=clone(r); delete x._dirty; delete x._lastSugg; x.submittedAt=Date.now(); saveRec(x); r.submittedAt=x.submittedAt;
-  delete r._dirty; msg=""; savePref("works",{sel,works:works.filter(w=>w._dirty)}); status("申請しました"); renderForm(); renderBand();
+  delete r._dirty; msg=""; savePref("works",{sel,works:works.filter(w=>w._dirty)});
+  justSent=r; if(navigator.vibrate)navigator.vibrate(30); renderForm(); renderBand(); setTimeout(()=>{justSent=null},600);
 }
 
 /* ================= 出力 ================= */
