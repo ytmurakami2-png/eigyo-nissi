@@ -190,7 +190,7 @@ function syncWorks(){
   const drafts=ro?[]:old.filter(w=>!out.some(o=>o.id===w.id)&&covers(w,sel)&&(w._dirty||!bucket(uid).recs[w.id]));
   works=[...out,...drafts.filter(w=>hasContent(w)||!out.length||w===keepBlank)];
   if(!works.length&&!ro)works=[newRec(sel)];
-  if(!works.includes(work))work=works[0]||null;
+  if(!works.includes(work))work=works.find(x=>work&&x.id===work.id)||works[0]||null;
 }
 function dayHTML(){
   const d=new Date(sel+"T00:00"),w=work,rng=w&&w.end&&w.end>w.date&&covers(w,sel);
@@ -323,7 +323,7 @@ function outHTML(){
 }
 function previewDiary(ids,multi,money){
   const rows=ids.flatMap(u=>rangeRecs(u).map(r=>({u,r,t:money?recTotal(r,u):0}))),tot=rows.reduce((a,x)=>a+x.t,0);
-  return `<section class="card"><div class="ohead"><h2>${money?"報告書":"活動の一覧"}</h2><b class="num">${money?yen(tot):`${rows.length}<small style="font-size:15px">件</small>`}</b></div>${rows.length?`<div>${rows.map(({u,r,t})=>`<div class="row"><span class="dt num">${md(r.date)}${r.end&&r.end>r.date?"<br>〜"+md(r.end):""}</span><span class="t"><b>${esc(r.client||(r.dest?r.dest+"出張":"―"))}</b><small>${esc([multi?displayName(u):"",r.style,r.purpose].filter(Boolean).join("・"))}${r.note?"　"+esc(r.note.split("\n")[0]):""}</small>${money&&t?`<span class="bd">${breakdown(r,u).map(b=>`<i>${esc(b.label)}</i><i>${yen(b.pay)}</i>`).join("")}</span>`:""}</span><span class="y num">${t?yen(t):""}</span></div>`).join("")}</div>`:`<p class="empty">この期間の記録はありません。</p>`}</section>`;
+  return `<section class="card"><div class="ohead"><h2>${money?"報告書":"活動の一覧"}</h2><b class="num">${money?yen(tot):`${rows.length}<small style="font-size:15px">件</small>`}</b></div>${rows.length?`<div>${rows.map(({u,r,t})=>`<div class="row" data-open="${esc(u)}|${esc(r.id)}" role="button"><span class="dt num">${md(r.date)}${r.end&&r.end>r.date?"<br>〜"+md(r.end):""}</span><span class="t"><b>${esc(r.client||(r.dest?r.dest+"出張":"―"))}</b><small>${esc([multi?displayName(u):"",r.style,r.purpose].filter(Boolean).join("・"))}${r.note?"　"+esc(r.note.split("\n")[0]):""}</small>${money&&t?`<span class="bd">${breakdown(r,u).map(b=>`<i>${esc(b.label)}</i><i>${yen(b.pay)}</i>`).join("")}</span>`:""}</span><span class="y num">${t?yen(t):""}</span></div>`).join("")}</div>`:`<p class="empty">この期間の記録はありません。</p>`}</section>`;
 }
 function previewExp(ids,multi){
   let tot=0;const rows=ids.flatMap(u=>{const r=rowsFor("exp",u);tot+=r.m.pay;return r.rows.map(x=>({u,x}))}).sort((a,b)=>String(a.x[1]).localeCompare(String(b.x[1])));
@@ -530,6 +530,13 @@ async function doLogin(){
 }
 
 /* ================= 操作 ================= */
+// 出力の一覧から、その記録を開いて直せるようにする
+function openRec(uid,id){
+  const r=bucket(uid).recs[id];if(!r)return;
+  viewId=uid===me?null:uid;rangeFrom=null;sel=r.date;viewYm=r.date.slice(0,7);works=[];work=null;msg="";
+  tab="rec";syncWorks();work=works.find(w=>w.id===id)||work;addedIds.add(id);render();
+  const el=document.querySelector(`[data-w="${works.indexOf(work)}"]`);if(el)el.scrollIntoView({block:"start"});else scrollTo(0,0);
+}
 /* ---------- 複数日：選んでいる日をもう一度押し、終わりの日を押す（パソコンはなぞっても良い） ---------- */
 let drag=null, suppressClick=false;
 function dayAt(x,y){const el=document.elementFromPoint(x,y);const b=el&&el.closest&&el.closest(".cal button[data-day]");return b?b.dataset.day:null}
@@ -557,6 +564,7 @@ document.addEventListener("scroll",ev=>{if(ev.target.id!=="strip")return;clearTi
 document.addEventListener("submit",ev=>{if(ev.target.id==="loginForm"){ev.preventDefault();if(!loginBusy)doLogin()}});
 document.addEventListener("click",ev=>{
   if(suppressClick&&ev.target.closest&&ev.target.closest(".cal")){suppressClick=false;return}
+  const op=ev.target.closest&&ev.target.closest("[data-open]");if(op){openRec(...op.dataset.open.split("|"));return}
   const b=ev.target.closest("button"); if(!b||b.disabled)return; const D=b.dataset;
   if(b.id==="loginSwitch"){loginMode=loginMode==="in"?"up":"in";loginMsg="";renderLogin();return}
   const box=b.closest("[data-w]"); if(box&&works[+box.dataset.w]&&works[+box.dataset.w]!==work){work=works[+box.dataset.w];msg=""}

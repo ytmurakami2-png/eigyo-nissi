@@ -159,3 +159,4 @@ nav button[aria-current=true]::before{content:"";position:absolute;top:0;left:30
 .inkan.sent{border-color:var(--ai);color:var(--ai)}
 .inkan.pop{animation:pop .35s ease-out}
 @keyframes pop{0%{transform:scale(1.8) rotate(-8deg);opacity:0}60%{transform:scale(.92) rotate(-8deg);opacity:1}100%{transform:rotate(-8deg)}}
+.row[data-open]{cursor:pointer}.row[data-open]:active{background:var(--ai-soft)}
