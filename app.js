@@ -64,7 +64,7 @@ function autoFor(r,uid){
   if(r.style!=="出張")return[]; const g=gradeOf(uid); if(!g)return[];
   const n=recDays(r),nt=n-1,out=[];
   if(nt>0&&g.dailyStay)out.push({cat:"日当",label:`日当 ${yen(g.dailyStay)}×${n}日`,claim:g.dailyStay*n,pay:g.dailyStay*n});
-  else if(nt===0&&R().dayTrip&&g.dailyDay)out.push({cat:"日当",label:"日帰り日当",claim:g.dailyDay,pay:g.dailyDay});
+  else if(nt===0&&R().dayTrip&&g.dailyDay)out.push({cat:"日当",label:`日当 ${yen(g.dailyDay)}×1日`,claim:g.dailyDay,pay:g.dailyDay});
   if(g.mode==="flat"&&nt>0&&g.lodging)out.push({cat:"宿泊費",label:`宿泊料（定額）${yen(g.lodging)}×${nt}泊`,claim:g.lodging*nt,pay:g.lodging*nt});
   return out;
 }
