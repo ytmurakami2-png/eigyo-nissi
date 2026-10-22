@@ -7,7 +7,7 @@ const NAMES={diary:"営業日誌",trip:"出張報告",exp:"出張旅費",report:
 const WD="日月火水木金土";
 // 会社の出張旅費規程（2025年11月1日施行）。rev を上げると、前に保存した規程よりこちらを使う
 const TEMPLATE={
-  rev:1, company:"株式会社CSS", title:"出張旅費規程", effective:"2025-11-01",
+  rev:2, company:"株式会社CSS", title:"出張旅費規程", effective:"2026-10-01",
   dayTrip:true, dayTripNote:"県内は片道30km以上、県外はすべて出張",
   transport:"実費（領収書または乗車履歴を提出）", carRate:0,
   grades:[{name:"全員",dailyDay:10000,dailyStay:10000,lodging:0,mode:"cap"}],
