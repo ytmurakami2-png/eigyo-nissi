@@ -175,7 +175,7 @@ function nameWords(){
 function maskNames(text){
   const t=esc(text);if(!blurNames||!t)return t;
   const ws=nameWords().map(x=>esc(x).replace(/[.*+?^${}()|[\]\\]/g,"\\$&"));
-  const re=new RegExp([...ws,"[一-龥ァ-ヶーA-Za-z]{1,12}(?:様|氏|先生|社長|さん)","[一-龥ァ-ヶーA-Za-z]{1,12}(?:株式会社|ホールディングス|工業|クリニック|病院|商事|コンサル|社)","株式会社[一-龥ァ-ヶーA-Za-z]{1,12}"].join("|"),"g");
+  const re=new RegExp([...ws,"[一-龥ァ-ヶーA-Za-z]{1,6}(?:様|氏|先生|社長|さん)","[一-龥ァ-ヶーA-Za-z]{1,10}(?:株式会社|ホールディングス|工業|クリニック|商事)","[ァ-ヶーA-Za-z]{2,12}社","株式会社[一-龥ァ-ヶーA-Za-z]{1,10}"].join("|"),"g");
   return t.replace(re,m=>`<span class="nm">${m}</span>`);
 }
 const nm=text=>blurNames?`<span class="nm">${esc(text)}</span>`:esc(text);
@@ -247,7 +247,7 @@ function formHTML(r,idx){
   h+=`<div class="f"><label for="fc">訪問先</label><input type="text" id="fc" data-k="client" class="${blurNames?"nmf":""}" value="${esc(r.client)}" placeholder="会社名・お名前" autocomplete="off">${rc.length?`<div class="chips">${rc.map(c=>`<button type="button" data-fillc="${esc(c)}">${nm(c)}</button>`).join("")}</div>`:""}</div>`;
   h+=`<div class="f"><span class="lbl">形式</span>${seg(STYLES,"style",r.style)}</div>`;
   h+=`<div class="f"><span class="lbl">目的</span>${seg(PURPOSES,"purpose",r.purpose)}</div>`;
-  h+=`<div class="f"><label for="fn">内容</label><textarea id="fn" data-k="note" class="${blurNames?"nmf":""}">${esc(r.note)}</textarea></div>`;
+  h+=`<div class="f"><label for="fn">内容</label>${blurNames?`<div class="mk"><textarea id="fn" data-k="note" class="nmt">${esc(r.note)}</textarea><div class="mko" aria-hidden="true">${maskNames(r.note)}</div></div>`:`<textarea id="fn" data-k="note">${esc(r.note)}</textarea>`}</div>`;
   if(r.style==="出張")h+=tripHTML(r,locked);
   h+=`</fieldset>`;
   if(rt&&rt.reason)h+=`<p class="notebox">差し戻し：${esc(rt.reason)}</p>`;
@@ -672,6 +672,7 @@ document.addEventListener("input",ev=>{
     const c=activeBox().querySelector(`[data-calc="${i}"]`);if(c){c.textContent=calcStr(x);c.className="calc"+(expLine(x,me).warn?" warn":"")}
     touch();const tt=activeBox().querySelector("[data-sum]");if(tt)tt.textContent=yen(recTotal(r,me));if(!wasDirty)refreshHead();return}
 });
+document.addEventListener("focusout",ev=>{const t=ev.target;if(t.classList&&t.classList.contains("nmt")){const o=t.parentNode.querySelector(".mko");if(o)o.innerHTML=maskNames(t.value)}});
 document.addEventListener("change",ev=>{
   const el=ev.target;
   if(el.id==="blurNames"){blurNames=el.checked;savePref("blur",blurNames);return}
