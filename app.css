@@ -172,3 +172,4 @@ nav button[aria-current=true]::before{content:"";position:absolute;top:0;left:30
 .mk:focus-within .mko{display:none}
 .sw{display:flex;align-items:center;gap:10px;font-size:15px}
 .sw input{width:22px;height:22px;accent-color:var(--ai);margin:0}
+.chips.show .nm{color:inherit!important;text-shadow:none}

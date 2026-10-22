@@ -644,6 +644,7 @@ document.addEventListener("click",ev=>{
     const i=Number(D.pill.slice(2)),x=r.exps[i];
     if(D.pill.startsWith("xc"))x.cat=D.v; else x.mode=x.mode===D.v?"":D.v;
     touch();renderForm();return}
+  if(D.fillc!==undefined&&blurNames){const c=b.closest(".chips");if(!c.classList.contains("show")){c.classList.add("show");clearTimeout(timers.chips);timers.chips=setTimeout(()=>c.classList.remove("show"),8000);return}}
   if(D.fillc!==undefined){r.client=D.fillc;touch();renderForm();return}
   if(D.dest!==undefined){r.dest=D.dest;touch();renderForm();return}
   if(D.addx){r.exps.push({cat:"交通費",mode:"",from:"",to:"",round:false,amount:"",nights:Math.max(1,recDays(r)-1)});touch();renderForm();return}
