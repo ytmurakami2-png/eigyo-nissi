@@ -104,3 +104,15 @@ create policy settings_write on public.settings for all to authenticated
 do $$ begin
   alter publication supabase_realtime add table public.records, public.approvals, public.settings, public.profiles;
 exception when others then null; end $$;
+
+-- カレンダーのつなぎ先（iPhone の公開カレンダーのリンクなど）。本人だけが読み書きする
+create table if not exists public.calendar_feeds (
+  user_id uuid primary key default auth.uid() references auth.users on delete cascade,
+  url text not null,
+  done text[] not null default '{}',
+  checked_at timestamptz
+);
+alter table public.calendar_feeds enable row level security;
+drop policy if exists calendar_feeds_own on public.calendar_feeds;
+create policy calendar_feeds_own on public.calendar_feeds for all to authenticated
+  using (user_id = auth.uid()) with check (user_id = auth.uid());
