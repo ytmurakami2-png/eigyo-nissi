@@ -64,10 +64,12 @@ function toRecords(events: Ev[], from: string, to: string) {
 Deno.serve(async req => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
   const db = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
-  // 毎朝の呼び出しは service role の鍵で全員分。アプリからはログインした本人の分だけ
+  // 毎朝の呼び出しは合言葉（app_secrets の cron_secret）付きで全員分。アプリからはログインした本人の分だけ
   const token = (req.headers.get("Authorization") || "").replace(/^Bearer\s+/i, "");
+  const { data: sec } = await db.from("app_secrets").select("value").eq("key", "cron_secret").maybeSingle();
+  const cron = sec?.value;
   let only: string | null = null;
-  if (token !== Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")) {
+  if (!(cron && req.headers.get("x-cron-secret") === cron)) {
     const { data } = await db.auth.getUser(token);
     if (!data.user) return json({ error: "ログインしてください" }, 401);
     only = data.user.id;
