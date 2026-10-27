@@ -40,3 +40,4 @@ PDF・写真・Word・文字のファイルを Claude に読ませて、規程�
 
 - Google カレンダー：`calendar/google-apps-script.gs` を Apps Script にウェブアプリとして置き、その URL を貼って「つなぐ」。以後、アプリを開くたびに入ります
 - それ以外：カレンダーから書き出した `.ics` を「ファイル」で選ぶ
+- データ保存（Supabase）につないでいる時：iPhone の「公開カレンダー」のリンク（webcal://…）を貼って「つなぐ」。`supabase/functions/cal-sync` が毎朝（`supabase/cron.sql`）とアプリを開いた時に取り込む。つなぎ先は `calendar_feeds` 表に本人だけが読める形で置く

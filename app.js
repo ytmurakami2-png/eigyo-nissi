@@ -490,15 +490,17 @@ function setHTML(){
    <div class="f"><label for="p_dept">部署</label><input type="text" id="p_dept" data-prof="dept" value="${esc(p.dept||"")}"></div>
    <p class="hint">旅費の等級：${g?esc(g.name):"―"}</p></section>`;
   h+=`<section class="card"><h2>表示</h2><label class="sw"><input type="checkbox" id="blurNames" ${blurNames?"checked":""}><span>会社名・個人名をぼかす</span></label></section>`;
-  h+=calHTML();
+  h+=calCardHTML();
   h+=`<section class="card"><h2>記録の取り込み</h2><button type="button" class="ghost" id="pasteImport" style="align-self:flex-start">貼り付けて取り込む</button></section>`;
   h+=ruleHTML(); if(isAdmin&&mode==="db")h+=membersHTML();
   if(mode==="db")h+=`<section class="card"><h2>アカウント</h2><p class="hint">${esc(email)}</p><button type="button" class="ghost" id="logout" style="align-self:flex-start">ログアウト</button></section>`;
   return h;
 }
-function calHTML(){
-  const u=loadPref("calUrl","");
-  return `<section class="card"><h2>カレンダー</h2>${u?`<p class="hint">⭐の付いた予定を、開くたびに入れます</p>`:`<div class="f"><label for="calUrl">カレンダーのURL</label><input type="text" id="calUrl" inputmode="url" autocomplete="off" placeholder="https://script.google.com/…"></div>`}
+let calUrlDb=null;
+const calUrl=()=>mode==="db"?(calUrlDb||""):loadPref("calUrl","");
+function calCardHTML(){
+  const u=calUrl();
+  return `<section class="card"><h2>カレンダー</h2>${u?`<p class="hint">⭐の付いた予定を、${mode==="db"?"毎朝":"開くたびに"}入れます</p>`:`<div class="f"><label for="calUrl">カレンダーのURL</label><input type="text" id="calUrl" inputmode="url" autocomplete="off" placeholder="webcal://…"></div>`}
    <div class="btnrow">${u?`<button type="button" class="ghost" id="calNow">取り込む</button><button type="button" class="ghost" id="calOff">外す</button>`:`<button type="button" class="ghost" id="calOn">つなぐ</button>`}<label class="ghost file">ファイル<input type="file" id="calFile" accept=".ics,text/calendar"></label></div></section>`;
 }
 function ruleHTML(){
@@ -633,9 +635,9 @@ document.addEventListener("click",ev=>{
   if(b.id==="copyDump"){navigator.clipboard.writeText(dump.text).then(()=>status("コピーしました"),()=>document.querySelector(".dump").select());return}
   // 設定
   if(b.id==="pasteImport"){pasteImport();return}
-  if(b.id==="calOn"){const u=($("calUrl").value||"").trim();if(!/^(https|webcal):\/\//i.test(u)){$("calUrl").focus();return}savePref("calUrl",u);calSync(false).then(render);return}
+  if(b.id==="calOn"){const u=($("calUrl").value||"").trim();if(!/^(https|webcal):\/\//i.test(u)){$("calUrl").focus();return}calSetUrl(u).then(()=>calSync(false)).then(render);return}
   if(b.id==="calNow"){calSync(false);return}
-  if(b.id==="calOff"){savePref("calUrl","");render();return}
+  if(b.id==="calOff"){calSetUrl("").then(render);return}
   if(b.id==="logout"){Data.signOut().finally(()=>{me=null;store={};works=[];work=null;viewId=null;tab="rec";render()});return}
   if(b.id==="aikeyGo"){const k=($("aikey").value||"").trim();if(!k){$("aikey").focus();return}RulesAI.setKey(k);if(ruleFile)readRuleFile(ruleFile);return}
   if(b.id==="rcancel"){ruleDraft=null;ruleMsg="";render();return}
@@ -747,9 +749,17 @@ async function calImport(events,quiet){
   if(add.length||!quiet)status(add.length?`⭐の予定を${add.length}件入れました`:"新しい⭐の予定はありません","ok");
   if(add.length)render();
 }
+async function calSetUrl(u){
+  if(mode!=="db"){savePref("calUrl",u);return}
+  try{await Data.saveCalUrl(u);calUrlDb=u}catch(e){status("保存できませんでした","warn")}
+}
+let calAt=0;
 async function calSync(quiet){
-  const u=loadPref("calUrl","");if(!u)return;
+  const u=calUrl();if(!u)return;
+  if(quiet&&Date.now()-calAt<600000)return;calAt=Date.now();
   if(!quiet)status("カレンダーを読んでいます…");
+  // データ保存につないでいる時は、サーバーが読んで入れる（毎朝も自動）
+  if(mode==="db"){try{const n=await Data.calSync();if(n)await reload();if(n||!quiet)status(n?`⭐の予定を${n}件入れました`:"新しい⭐の予定はありません","ok");if(n)render()}catch(e){if(!quiet)status("カレンダーを読めませんでした","warn")}return}
   try{await calImport(await Cal.fetchUrl(u),quiet)}
   catch(e){status("カレンダーを読めませんでした（"+String(e&&e.message||e).slice(0,30)+"）","warn")}
 }
@@ -757,7 +767,9 @@ async function start(){
   status("読み込み中…");
   const o=loadPref("works",null);if(o&&o.works&&o.works.length){works=o.works;sel=o.sel||sel;viewYm=sel.slice(0,7)}
   if(mode==="db"){try{const n=await Data.moveLocal();if(n)status(`この端末の記録${n}件を引き継ぎました`)}catch(e){}}
-  await reload();await importFromLink();render();calSync(true);
+  await reload();await importFromLink();
+  if(mode==="db")try{calUrlDb=await Data.calUrl()}catch(e){}
+  render();calSync(true);
   Data.watch(remoteChanged);
 }
 (async function boot(){

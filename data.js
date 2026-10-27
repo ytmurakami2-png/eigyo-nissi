@@ -89,6 +89,22 @@ const Data = (() => {
       if (error) { let code = "fail"; try { code = (await error.context.json()).error || code } catch (e) {} throw new Error(code) }
       return d.rules;
     },
+    // カレンダーのつなぎ先。つないでいる時はサーバーが毎朝取り込むので、ここに置く
+    async calUrl() {
+      if (!online) return null;
+      const d = must(await sb.from("calendar_feeds").select("url").eq("user_id", me));
+      return d.length ? d[0].url : "";
+    },
+    async saveCalUrl(url) {
+      if (url) must(await sb.from("calendar_feeds").upsert({ user_id: me, url }));
+      else must(await sb.from("calendar_feeds").delete().eq("user_id", me));
+    },
+    // 今すぐ取り込む。入れた件数を返す
+    async calSync() {
+      const { data: d, error } = await sb.functions.invoke("cal-sync", { body: {} });
+      if (error) { let code = "fail"; try { code = (await error.context.json()).error || code } catch (e) {} throw new Error(code) }
+      return d.added;
+    },
     // 他の端末で変わった時に知らせる
     watch(cb) {
       if (!online) return;
