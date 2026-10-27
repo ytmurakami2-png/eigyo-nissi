@@ -499,6 +499,7 @@ function setHTML(){
 let calUrlDb=null;
 const calUrl=()=>mode==="db"?(calUrlDb||""):loadPref("calUrl","");
 function calCardHTML(){
+  if(mode==="db")return""; // ネット保存の時は、毎朝 Claude が Google カレンダーから入れる
   const u=calUrl();
   return `<section class="card"><h2>カレンダー</h2>${u?`<p class="hint">⭐の付いた予定を、${mode==="db"?"毎朝":"開くたびに"}入れます</p>`:`<div class="f"><label for="calUrl">カレンダーのURL</label><input type="text" id="calUrl" inputmode="url" autocomplete="off" placeholder="webcal://…"></div>`}
    <div class="btnrow">${u?`<button type="button" class="ghost" id="calNow">取り込む</button><button type="button" class="ghost" id="calOff">外す</button>`:`<button type="button" class="ghost" id="calOn">つなぐ</button>`}<label class="ghost file">ファイル<input type="file" id="calFile" accept=".ics,text/calendar"></label></div></section>`;
@@ -755,7 +756,7 @@ async function calSetUrl(u){
 }
 let calAt=0;
 async function calSync(quiet){
-  const u=calUrl();if(!u)return;
+  const u=calUrl();if(!u||mode==="db")return;
   if(quiet&&Date.now()-calAt<600000)return;calAt=Date.now();
   if(!quiet)status("カレンダーを読んでいます…");
   // データ保存につないでいる時は、サーバーが読んで入れる（毎朝も自動）
